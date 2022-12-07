@@ -1,6 +1,8 @@
 #pragma once
 #include "forward.h"
 #include <algorithm>
+#include <any>
+#include <cassert>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -10,13 +12,6 @@ namespace ecs {
 struct World;
 struct Entity;
 struct Archetype;
-
-// type erase
-struct ColumnBase {};
-
-template <class T> struct Column : ColumnBase {
-  std::vector<T> elements;
-};
 
 using EcsId = uint64_t;
 using EntityId = EcsId;
@@ -30,12 +25,17 @@ struct Archetype {
   World& world;
   ArchetypeId id;
   Type type;
-  std::vector<std::unique_ptr<ColumnBase>> components;
+  std::vector<std::vector<std::any>> components;
   std::unordered_map<ComponentId, Archetype&> add_archetypes;
   std::unordered_map<ComponentId, Archetype&> del_archetypes;
 
   Archetype() = delete;
-  Archetype(World& world, ArchetypeId id) : world(world), id(id){};
+  Archetype(World& world, ArchetypeId id, const Type& type) : world(world), id(id), type(type) {
+    components.resize(type.size());
+  };
+  Archetype(World& world, ArchetypeId id, Type&& type) : world(world), id(id), type(type) {
+    components.resize(type.size());
+  };
   Archetype(const Archetype&) = delete;
   Archetype(Archetype&& other) : world(other.world), id(other.id), type(other.type) {
     components.swap(other.components);
@@ -72,10 +72,6 @@ struct ecs_archetype_equal_t {
 struct Entity {
   EntityId id;
   Entity(struct World& world, EntityId id) : world(world), id(id) {}
-  template <class... Comps> Entity& add() { return *this; }
-  // Get component of type Comp
-  template <class Comp> auto get() -> Comp { // transform comp to component id
-  }
 
 private:
   struct World& world; // must init by world
@@ -101,14 +97,14 @@ struct World {
   // Record in component index with component column for archetype
   std::unordered_map<ComponentId, ArchetypeMap> component_index;
   std::unordered_map<std::string, ComponentId> signature_to_id; // component signature to id
+  std::unordered_map<ComponentId, std::any> component_default;
 
   World() { init(); }
 
   // initialize world
   void init() {
     // create root empty archetype, only archetype::id can copy.
-    Archetype empty_archetype(*this, ecs_id_count++);
-    archetype_index.emplace(std::make_pair(Type{}, std::move(empty_archetype)));
+    archetype_index.emplace(std::make_pair(Type{}, std::move(archetype(Type{}))));
   }
 
   EntityId entity() {
@@ -120,42 +116,41 @@ struct World {
   }
 
   Archetype& add_to_archetype(Archetype& src_archetype, ComponentId component_id) {
+    // assume that src_archetype not contains this component
     auto type = src_archetype.type;
-    if(insert_component(type, component_id)) {
-      src_archetype.add_archetypes.emplace(std::make_pair(component_id, create_archetype()));
+    // check if dst_archetype is in the cache
+    auto archetype_iter = src_archetype.add_archetypes.find(component_id);
+    if (archetype_iter == src_archetype.add_archetypes.end()) {
+      Archetype& dst_archetype = archetype(type);
+      src_archetype.add_archetypes.emplace(component_id, dst_archetype);
+      dst_archetype.del_archetypes.emplace(component_id, src_archetype);
     }
+    return archetype_iter->second;
   }
 
-  bool add_component(EntityId entity_id, ComponentId component_id) {
+  void add_component(EntityId entity_id, ComponentId component_id) {
     Record& record = entity_index.at(entity_id);
-    Archetype& old_archetype = record.archetype;
-    // check if the edge has been created previously
-    auto archetype_iter = old_archetype.add_archetypes.find(component_id);
-    // not created so far
-    if (archetype_iter == old_archetype.add_archetypes.end()) {
-      Archetype&& new_archetype = create_archetype();
-      new_archetype.type = old_archetype.type;
-      if (insert_component(new_archetype.type, component_id)) {
-        new_archetype.components.resize(new_archetype.type.size());
-        move_entity(old_archetype, record.row, new_archetype);
-        return true;
+    Archetype& src = record.archetype;
+    Archetype& dst = add_to_archetype(src, component_id);
+
+    if (record.row == -1) {
+      for (int i = 0; i < dst.type.size(); i++) {
+        auto comp_id = dst.type[i];
+        // append default value of component
+        dst.components[i].emplace_back(component_default[comp_id]); 
       }
+      return;
     }
-    return false;
-  }
-
-  // insert component_id into archetype.type, keep increasing order
-  bool insert_component(Type& type, ComponentId component_id) {
-    auto insert_iter = std::lower_bound(type.begin(), type.end(), component_id);
-    if (*insert_iter == component_id) {
-      return false; // component can not repeat, already exists!
-    } else {
-      type.insert(insert_iter, component_id);
-    }
-  }
-
-  void move_entity(Archetype& src, size_t row, Archetype& dst) {
-    for (auto& column_ptr : src.components) {
+    
+    for (int i = 0; i < src.type.size(); i++) {
+      auto comp_id = src.type[i];
+      auto dst_col = component_index[comp_id][dst.id].column;
+      auto dst_row = dst.components[dst_col].size();
+      dst.components[dst_col].emplace_back(std::move(src.components[i][record.row]));
+      src.components[i].erase(src.components[i].begin() + record.row);
+      // update entity_index
+      std::swap(entity_index[entity_id].archetype, dst);
+      entity_index[]
     }
   }
 
@@ -165,15 +160,29 @@ struct World {
     printf("comp_sig: %s\n", comp_sig);
     auto iter = signature_to_id.find(comp_sig);
     if (iter == signature_to_id.end()) {
-      return signature_to_id[comp_sig] = ++ecs_id_count;
-    } else {
-      return iter->second;
+      // storage the default value created by 'Component' type
+      component_default[ecs_id_count] = Comp();
+      return signature_to_id[comp_sig] = ecs_id_count++;
     }
-  };
+    return iter->second;
+  }
 
-  Archetype create_archetype() {
-    ArchetypeId archetype_id = ecs_id_count++;
-    return {*this, archetype_id};
+  // return the reference of achetype based on these components
+  Archetype& archetype(const Type& type) {
+    // check if archetype_index exists
+    auto archetype_iter = archetype_index.find(type);
+    if (archetype_iter == archetype_index.end()) {
+      // if not exists, create new archetype
+      Archetype archetype(*this, ecs_id_count++, type);
+      auto p = archetype_index.emplace(std::make_pair(type, std::move(archetype)));
+      assert(p.second && "emplace new archetype failed.");
+      for (size_t i = 0; i < type.size(); ++i) {
+        component_index[type[i]][archetype.id] = ArchetypeRecord{i};
+      }
+      return p.first->second;
+    } else {
+      return archetype_iter->second;
+    }
   }
 };
 
