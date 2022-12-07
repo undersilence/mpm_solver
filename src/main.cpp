@@ -3,7 +3,7 @@
 
 int main() {
     ecs::World world;
-
-    world.component<float>();
-    world.component<int>();
+    ecs::Type empty_type;
+    printf("component id: %llu\n", world.component<float>());
+    printf("component id: %llu\n", world.component<int>());
 }
