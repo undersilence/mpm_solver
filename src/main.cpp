@@ -1,6 +1,9 @@
 #include <iostream>
-#include "ecs/world.h"
+#include "ecs/ecs.h"
 
 int main() {
     ecs::World world;
+
+    world.component<float>();
+    world.component<int>();
 }
