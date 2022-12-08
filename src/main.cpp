@@ -3,7 +3,10 @@
 
 int main() {
     ecs::World world;
-    ecs::Type empty_type;
-    printf("component id: %llu\n", world.component<float>());
-    printf("component id: %llu\n", world.component<int>());
+    auto entity = world.entity()
+    .add<int>()
+    .set<float>()
+    .set<int>(5).add<float>();
+
+    printf("value: %d\n", entity.get<int>());
 }
