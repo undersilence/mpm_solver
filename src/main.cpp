@@ -23,8 +23,8 @@ int main() {
     
     for(auto& e : entities) {
         int flags = 0;
-        flags |= e.has<Position>();
-        flags |= e.has<Velocity>() << 1;
+        flags |= (int)e.has<Position>();
+        flags |= (int)e.has<Velocity>() << 1;
         if (flags == 3) {
             auto& pos = e.get<Position>();
             auto& vel = e.get<Velocity>();

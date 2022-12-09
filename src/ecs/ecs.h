@@ -22,7 +22,7 @@ struct TypeInfo {
   std::any default_value;
 };
 
-// maybe a dummy archetype is needed
+// another name: Table
 struct Archetype {
   struct World& world;
   ArchetypeId id;
@@ -31,6 +31,9 @@ struct Archetype {
   std::unordered_map<ComponentId, Archetype&> add_archetypes;
   std::unordered_map<ComponentId, Archetype&> del_archetypes;
 
+  std::unordered_map<EntityId, size_t> entity_to_row;
+  std::unordered_map<size_t, EntityId> row_to_entity;
+
   Archetype() = delete;
   Archetype(World& world, ArchetypeId id, const Type& type) : world(world), id(id), type(type) {
     components.resize(type.size());
@@ -38,9 +41,10 @@ struct Archetype {
       column.clear();
     }
   };
+
   Archetype(const Archetype&) = delete;
   // Only move operation is allowed
-  Archetype(Archetype&& other) : world(other.world), id(other.id), type(other.type) {
+  Archetype(Archetype&& other) noexcept : world(other.world), id(other.id), type(other.type) {
     components.swap(other.components);
     add_archetypes.swap(other.add_archetypes);
     del_archetypes.swap(other.del_archetypes);
@@ -50,6 +54,81 @@ struct Archetype {
     other.del_archetypes.clear();
   }
   bool operator==(const Archetype& other) const { return id == other.id; }
+
+  [[nodiscard]] std::vector<std::any> get_entity_row(EntityId entity_id) const {
+    assert(entity_to_row.contains(entity_id) && "entity not exists in this archetype.");
+    auto row = entity_to_row.at(entity_id);
+    std::vector<std::any> row_data;
+    for (auto& column : components) {
+      row_data.emplace_back(column[row]);
+    }
+    return row_data;
+  }
+
+//  std::vector<std::reference_wrapper<std::any>> get_entity_row(EntityId entity_id) {
+//    assert(entity_to_row.contains(entity_id) && "entity not exists in this archetype.");
+//    auto row = entity_to_row.at(entity_id);
+//    std::vector<std::reference_wrapper<std::any>> row_data;
+//    for (auto& column : components) {
+//      row_data.emplace_back(std::ref(column[row]));
+//    }
+//    return row_data;
+//  }
+
+  void add_entity_row(EntityId entity_id, std::vector<std::any>&& row_data) {
+    assert(!entity_to_row.contains(entity_id) && "entity already exists");
+    auto last_row = row_to_entity.size();
+    entity_to_row[entity_id] = last_row;
+    row_to_entity[last_row] = entity_id;
+    assert(row_data.size() == type.size() && "row_data size should equals to the size of archetype:: type list.");
+    for (int i = 0; i < type.size(); ++i) {
+      components[i].emplace_back(std::move(row_data[i]));
+    }
+  }
+
+  void set_entity_row(EntityId entity_id, std::vector<std::any>&& row_data) {
+    if (entity_to_row.contains(entity_id)) {
+      // entity exists then do update
+      auto row = entity_to_row.at(entity_id);
+      assert(row_data.size() == type.size() && "row_data size should equals to the size of archetype:: type list.");
+      for (size_t i = 0; i < row_data.size(); ++i) {
+        components[i][row].swap(row_data[i]);
+      }
+    } else {
+      add_entity_row(entity_id, std::move(row_data));
+    }
+  }
+
+  void del_entity_row(EntityId entity_id) {
+    if (!entity_to_row.contains(entity_id)) {
+      // entity not exists
+      return;
+    }
+    // try swap entity_row to the end.
+    auto last_row = row_to_entity.size();
+    if (last_row != 1) {
+      auto last_entity = row_to_entity[last_row];
+      swap_entity_row(entity_id, last_entity);
+    }
+    // remove last entity
+    entity_to_row.erase(entity_id);
+    row_to_entity.erase(last_row);
+    for(auto& column : components) {
+      column.pop_back();
+    }
+  }
+
+  // further entity sorting support
+  void swap_entity_row(EntityId entity_x, EntityId entity_y) {
+    auto& row_x = entity_to_row[entity_x];
+    auto& row_y = entity_to_row[entity_y];
+    // swap each component
+    for (auto& column : components) {
+      std::swap(column[row_x], column[row_y]);
+    }
+    std::swap(row_to_entity[row_x], row_to_entity[row_y]);
+    std::swap(row_x, row_y);
+  }
 };
 
 struct ecs_ids_hash_t {
@@ -67,11 +146,11 @@ struct ecs_archetype_equal_t {
 
 struct World {
 
-  struct Record {
+  struct Record { // entity query caching
     Archetype& archetype;
     size_t row;
     Record() = delete;
-    Record(Record&& other)  noexcept : archetype(other.archetype), row(other.row) {}
+    Record(Record&& other) noexcept : archetype(other.archetype), row(other.row) {}
     Record(Archetype& archetype, size_t row) : archetype(archetype), row(row) {}
   };
 
@@ -127,22 +206,20 @@ struct Entity {
   Entity(const Entity&) = default;
   Entity(Entity&&) = default;
 
-  template <class Comp> Entity& add(Comp&& value = Comp()) 
-  {
+  template <class Comp> Entity& add(Comp&& value = Comp()) {
     auto comp_id = world.get_id<Comp>();
-    world.add_component(id, comp_id, std::move(value));
+    world.add_component(id, comp_id, std::forward<Comp>(value));
     return *this;
   }
 
-  template <class Comp>
-  Comp& get() {
+  template <class Comp> Comp& get() {
     auto comp_id = world.get_id<Comp>();
     return std::any_cast<Comp&>(world.get_component(id, comp_id));
   }
 
   template <class Comp> Entity& set(Comp&& value = Comp()) {
     auto comp_id = world.get_id<Comp>();
-    world.set_component(id, comp_id, std::move(value));
+    world.set_component(id, comp_id, std::forward<Comp>(value));
     return *this;
   }
 

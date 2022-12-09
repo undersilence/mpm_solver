@@ -7,6 +7,7 @@ void World::init() { ecs_id_count = 0; }
 Entity World::entity() {
   // add empty entity into empty archetype
   EntityId new_entity_id = ecs_id_count++;
+  auto& empty_archetype = archetype(Type());
   Record record(archetype(Type()), 0);
   entity_index.emplace(new_entity_id, std::move(record));
   return {*this, new_entity_id};
@@ -65,16 +66,12 @@ void World::add_component(EntityId entity_id, ComponentId component_id, std::any
     return;
   }
 
+  auto src_row = src.entity_to_row[entity_id];
   // move rest component_row from src into dst_archetype
-  for (int i = 0; i < src.type.size(); i++) {
-    auto src_comp_id = src.type[i];
-    auto col = component_index[src_comp_id][dst.id].column;
-    // push entity to next row in dst_archetype
-    dst.components[col].emplace_back(std::move(src.components[i][record.row]));
-    // erase original entity_row, swap to the end first
-    auto& value_x = src.components.i;
-    auto& value_y = src.components.back();
-    src.components[i].erase(src.components[i].begin() + record.row);
+  for (int src_col = 0; src_col < src.type.size(); src_col++) {
+    auto col = component_index[src.type[src_col]][dst.id].column;
+    std::vector<std::any>&& data_row = src.get_entity_row(entity_id);
+    dst.set_entity_row(entity_id, );
   }
 
   // add default component value into dst_archetype[dst_column][dst_row] first
@@ -94,7 +91,7 @@ std::any& World::get_component(EntityId entity_id, ComponentId component_id) {
   assert(component_index[component_id].contains(archetype.id) && "required component not exists in this entity.");
 
   auto comp_col = component_index[component_id][archetype.id].column;
-  auto entity_row = record.row;
+  auto entity_row = archetype.entity_to_row[entity_id];
   return archetype.components[comp_col][entity_row];
 }
 
