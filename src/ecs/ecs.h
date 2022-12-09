@@ -127,14 +127,14 @@ struct Entity {
   Entity(const Entity&) = default;
   Entity(Entity&&) = default;
 
-  template <class Comp> Entity& add(Comp&& value = Comp()) {
+  template <class Comp> Entity& add(Comp&& value = Comp()) 
+  {
     auto comp_id = world.get_id<Comp>();
-    world.add_component(id, comp_id, std::move(Comp()));
+    world.add_component(id, comp_id, std::move(value));
     return *this;
   }
 
   template <class Comp>
-
   Comp& get() {
     auto comp_id = world.get_id<Comp>();
     return std::any_cast<Comp&>(world.get_component(id, comp_id));
@@ -142,7 +142,7 @@ struct Entity {
 
   template <class Comp> Entity& set(Comp&& value = Comp()) {
     auto comp_id = world.get_id<Comp>();
-    world.set_component(id, comp_id, value);
+    world.set_component(id, comp_id, std::move(value));
     return *this;
   }
 
