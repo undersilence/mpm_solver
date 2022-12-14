@@ -20,7 +20,9 @@ int main() {
     for(int i = 0; i < N/2; i++) {
         entities[i].add<Velocity>({-1, -1});
     }
-    
+
+    world.query<Position>();
+
     for(auto& e : entities) {
         int flags = 0;
         flags |= (int)e.has<Position>();

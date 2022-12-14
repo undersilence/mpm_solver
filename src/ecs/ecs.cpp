@@ -8,8 +8,8 @@ Entity World::entity() {
   // add empty entity into empty archetype
   EntityId new_entity_id = ecs_id_count++;
   auto& empty_archetype = archetype(Type());
-  Record record(archetype(Type()), 0);
-  entity_index.emplace(new_entity_id, std::move(record));
+  empty_archetype.add_entity_row(new_entity_id, {});
+  entity_index.emplace(new_entity_id, std::move(Record(empty_archetype, 0)));
   return {*this, new_entity_id};
 }
 
@@ -54,33 +54,41 @@ void World::add_component(EntityId entity_id, ComponentId component_id, std::any
 
   assert(!component_index[component_id].contains(src.id) && "add multi-component is not supported");
 
-  // empty entity (empty components) condition
-  if (src.components.empty()) {
-    for (int i = 0; i < dst.type.size(); i++) {
-      size_t row = dst.components[i].size();
-      // append default value of component
-      dst.components[i].emplace_back(std::move(value));
-      entity_index.erase(entity_id);
-      entity_index.emplace(entity_id, std::move(Record(dst, row)));
-    }
-    return;
-  }
+//  if (src.components.empty()) {
+//  // empty entity (empty components) condition
+//    for (int i = 0; i < dst.type.size(); i++) {
+//      size_t row = dst.components[i].size();
+//      // append default value of component
+//      dst.components[i].emplace_back(std::move(value));
+//      entity_index.erase(entity_id);
+//      entity_index.emplace(entity_id, std::move(Record(dst, row)));
+//    }
+//    return;
+//  }
 
   auto src_row = src.entity_to_row[entity_id];
   // move rest component_row from src into dst_archetype
   for (int src_col = 0; src_col < src.type.size(); src_col++) {
-    auto col = component_index[src.type[src_col]][dst.id].column;
+    auto dst_col = component_index[src.type[src_col]][dst.id].column;
     std::vector<std::any>&& data_row = src.get_entity_row(entity_id);
-    dst.set_entity_row(entity_id, );
+    std::any& src_value = src.components[src_col][src_row];
+    dst.components[dst_col].emplace_back(std::move(src_value));
   }
+  src.del_entity_row(entity_id);
 
   // add default component value into dst_archetype[dst_column][dst_row] first
   auto dst_col = component_index[component_id][dst.id].column;
   auto dst_row = dst.components[dst_col].size();
   dst.components[dst_col].emplace_back(std::move(value));
   // update entity_index, this will erase the previous Record&
+
+  dst.entity_to_row[entity_id] = dst_row;
+  dst.row_to_entity[dst_row] = entity_id;
   entity_index.erase(entity_id);
   entity_index.emplace(entity_id, Record(dst, dst_row));
+
+  assert(src.entity_to_row.size() == src.row_to_entity.size() && "please check the entity <=> row pair in src archetype.");
+  assert(dst.entity_to_row.size() == dst.row_to_entity.size() && "please check the entity <=> row pair in dst archetype.");
 }
 
 std::any& World::get_component(EntityId entity_id, ComponentId component_id) {

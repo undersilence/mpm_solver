@@ -4,6 +4,7 @@
 #include <any>
 #include <cassert>
 #include <optional>
+#include <stack>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -19,20 +20,22 @@ using Type = std::vector<ComponentId>;
 
 struct TypeInfo {
   size_t size;
-  std::any default_value;
 };
 
 // another name: Table
 struct Archetype {
   struct World& world;
   ArchetypeId id;
-  Type type;
+  const Type type;
   std::vector<std::vector<std::any>> components;
   std::unordered_map<ComponentId, Archetype&> add_archetypes;
   std::unordered_map<ComponentId, Archetype&> del_archetypes;
 
   std::unordered_map<EntityId, size_t> entity_to_row;
   std::unordered_map<size_t, EntityId> row_to_entity;
+
+  std::unordered_map<size_t, ComponentId> col_to_comp;
+  std::unordered_map<ComponentId, size_t> comp_to_col;
 
   Archetype() = delete;
   Archetype(World& world, ArchetypeId id, const Type& type) : world(world), id(id), type(type) {
@@ -48,6 +51,13 @@ struct Archetype {
     components.swap(other.components);
     add_archetypes.swap(other.add_archetypes);
     del_archetypes.swap(other.del_archetypes);
+    // move entity <=> row bimap
+    entity_to_row.swap(other.entity_to_row);
+    row_to_entity.swap(other.row_to_entity);
+    // move comp <=> column bimap
+    comp_to_col.swap(other.comp_to_col);
+    col_to_comp.swap(other.col_to_comp);
+
     other.id = -1;
     other.components.clear();
     other.add_archetypes.clear();
@@ -65,32 +75,34 @@ struct Archetype {
     return row_data;
   }
 
-//  std::vector<std::reference_wrapper<std::any>> get_entity_row(EntityId entity_id) {
-//    assert(entity_to_row.contains(entity_id) && "entity not exists in this archetype.");
-//    auto row = entity_to_row.at(entity_id);
-//    std::vector<std::reference_wrapper<std::any>> row_data;
-//    for (auto& column : components) {
-//      row_data.emplace_back(std::ref(column[row]));
-//    }
-//    return row_data;
-//  }
+  //  std::vector<std::reference_wrapper<std::any>> get_entity_row(EntityId entity_id) {
+  //    assert(entity_to_row.contains(entity_id) && "entity not exists in this archetype.");
+  //    auto row = entity_to_row.at(entity_id);
+  //    std::vector<std::reference_wrapper<std::any>> row_data;
+  //    for (auto& column : components) {
+  //      row_data.emplace_back(std::ref(column[row]));
+  //    }
+  //    return row_data;
+  //  }
 
   void add_entity_row(EntityId entity_id, std::vector<std::any>&& row_data) {
     assert(!entity_to_row.contains(entity_id) && "entity already exists");
-    auto last_row = row_to_entity.size();
-    entity_to_row[entity_id] = last_row;
-    row_to_entity[last_row] = entity_id;
-    assert(row_data.size() == type.size() && "row_data size should equals to the size of archetype:: type list.");
+    assert(row_data.size() == type.size() &&
+           "row_data size should equals to the size of archetype:: type list.");
+    auto nxt_row = row_to_entity.size();
+    entity_to_row[entity_id] = nxt_row;
+    row_to_entity[nxt_row] = entity_id;
     for (int i = 0; i < type.size(); ++i) {
       components[i].emplace_back(std::move(row_data[i]));
     }
   }
 
   void set_entity_row(EntityId entity_id, std::vector<std::any>&& row_data) {
+    assert(row_data.size() == type.size() &&
+           "row_data size should equals to the size of archetype:: type list.");
     if (entity_to_row.contains(entity_id)) {
       // entity exists then do update
       auto row = entity_to_row.at(entity_id);
-      assert(row_data.size() == type.size() && "row_data size should equals to the size of archetype:: type list.");
       for (size_t i = 0; i < row_data.size(); ++i) {
         components[i][row].swap(row_data[i]);
       }
@@ -100,20 +112,20 @@ struct Archetype {
   }
 
   void del_entity_row(EntityId entity_id) {
-    if (!entity_to_row.contains(entity_id)) {
+    if (!row_to_entity.empty() && !entity_to_row.contains(entity_id)) {
       // entity not exists
       return;
     }
     // try swap entity_row to the end.
-    auto last_row = row_to_entity.size();
-    if (last_row != 1) {
-      auto last_entity = row_to_entity[last_row];
+    auto last_row = row_to_entity.size() - 1;
+    auto last_entity = row_to_entity[last_row];
+    if (last_entity != entity_id) {
       swap_entity_row(entity_id, last_entity);
     }
     // remove last entity
     entity_to_row.erase(entity_id);
     row_to_entity.erase(last_row);
-    for(auto& column : components) {
+    for (auto& column : components) {
       column.pop_back();
     }
   }
@@ -144,6 +156,9 @@ struct ecs_archetype_equal_t {
   bool operator()(const Type& lhs, const Type& rhs) const { return lhs == rhs; }
 };
 
+// Query iterator
+struct Query {};
+
 struct World {
 
   struct Record { // entity query caching
@@ -159,7 +174,7 @@ struct World {
   };
 
   uint64_t ecs_id_count = 0;
-  // Find an archetype by its list of component ids
+  // Find an archetype by its list of component ids, where archetype stored
   std::unordered_map<Type, Archetype, ecs_ids_hash_t, ecs_archetype_equal_t> archetype_index;
   // Find the archetype for an entity
   std::unordered_map<EntityId, Record> entity_index;
@@ -167,7 +182,7 @@ struct World {
   using ArchetypeMap = std::unordered_map<ArchetypeId, ArchetypeRecord>;
   // Record in component index with component column for archetype
   std::unordered_map<ComponentId, ArchetypeMap> component_index;
-  std::unordered_map<std::string, ComponentId> signature_to_id; // component signature to id
+  std::unordered_map<std::string_view, ComponentId> signature_to_id; // component signature to id
   // std::unordered_map<ComponentId, std::any> component_default_val;
 
   // initialize world
@@ -185,7 +200,7 @@ struct World {
 
   // create or get new component_id, no related archetypes are created here
   template <class Comp> ComponentId get_id() {
-    auto comp_sig = FUNC_SIG;
+    auto comp_sig = signature<Comp>();
     auto iter = signature_to_id.find(comp_sig);
     if (iter == signature_to_id.end()) {
       printf("Create component: %s\n", comp_sig);
@@ -196,6 +211,28 @@ struct World {
     }
     return iter->second;
   }
+
+  template <class... Comps> void query() {
+    // dfs on archetypes' graph
+    std::vector<ComponentId> comp_ids = {get_id<Comps>()...};
+    auto sorted_comp_ids = comp_ids;
+    std::sort(sorted_comp_ids.begin(), sorted_comp_ids.end());
+
+    auto archetype_iter = archetype_index.find(sorted_comp_ids);
+    if (archetype_iter == archetype_index.end())
+      return;
+
+    auto& archetype_node = archetype_iter->second;
+    printf("archetype %llu entity size: %llu\n", archetype_node.id,
+           archetype_node.entity_to_row.size());
+    // start dfs
+    for (auto& node : archetype_node.add_archetypes) {
+      printf("archetype %llu entity size: %llu\n", node.second.id,
+             node.second.entity_to_row.size());
+    }
+  }
+
+  template <class Comp> inline const char* signature() const { return FUNC_SIG; }
 };
 
 struct Entity {
