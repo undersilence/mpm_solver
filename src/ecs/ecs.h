@@ -65,6 +65,9 @@ struct Archetype {
   }
   bool operator==(const Archetype& other) const { return id == other.id; }
 
+  auto row() const { return row_to_entity.size(); }
+  auto col() const { return type.size(); }
+
   [[nodiscard]] std::vector<std::any> get_entity_row(EntityId entity_id) const {
     assert(entity_to_row.contains(entity_id) && "entity not exists in this archetype.");
     auto row = entity_to_row.at(entity_id);
@@ -156,8 +159,76 @@ struct ecs_archetype_equal_t {
   bool operator()(const Type& lhs, const Type& rhs) const { return lhs == rhs; }
 };
 
-// Query iterator
-struct Query {};
+// iterator on Archetypes' DAG
+struct ArchetypeIterator {
+  std::reference_wrapper<Archetype> archetype_ptr;
+  std::unordered_map<ComponentId, Archetype&>::iterator edges_iter;
+
+  ArchetypeIterator(Archetype& archetype) : archetype_ptr(std::ref(archetype)) {
+    auto iter = archetype.add_archetypes.begin();
+  }
+
+  Archetype& operator*() const { return archetype_ptr.get(); }
+
+  ArchetypeIterator& operator++() {
+    edges_iter++;
+    if (archetype_ptr.get().add_archetypes.end() == edges_iter) {
+      // go to next archetype
+    }
+  }
+};
+
+// Query as container form
+template <class... Comps> struct Query {
+  Query(World& world) : world(world), comp_ids(world.get_id<Comps>()...) {
+    auto type = comp_ids;
+    std::sort(type.begin(), type.end());
+    auto archetype_iter = world.archetype_index.find(type);
+    if (archetype_iter != world.archetype_index.end()) {
+      init_related_archetypes(archetype_iter->second);
+    }
+  }
+
+  // recursively init related archetypes
+  void init_related_archetypes(Archetype& archetype) {
+    if (archetype.row() <= 0) {
+      return;
+    }
+    related_archetypes.emplace_back(archetype);
+    for (auto& next_archetype : archetype.add_archetypes) {
+      init_related_archetypes(next_archetype.second);
+    }
+  }
+
+  struct Iterator {
+    using iterators_t = std::tuple<typename std::vector<Comps>::iterator...>;
+    using reference_t = std::tuple<Comps&...>;
+
+    std::reference_wrapper<Archetype> curr_archetype;
+    size_t curr_row, max_row;
+    Query& query;
+    iterators_t iterators;
+
+    reference_t get() {
+      return std::apply([&](auto&&... args) { return reference_t((*args)...); }, iterators);
+    }
+
+    Iterator& advance(ptrdiff_t step_size) {
+      std::apply([&](auto&&... iter) { (iter += step_size,...); }, iterators)
+    }
+  };
+
+  size_t size() {
+    size_t total_count = 0;
+    for (auto& archetype : related_archetypes) {
+      total_count += archetype.get().row();
+    }
+  }
+
+  World& world;
+  std::vector<std::reference_wrapper<Archetype>> related_archetypes;
+  std::vector<ComponentId> comp_ids;
+};
 
 struct World {
 
@@ -182,7 +253,7 @@ struct World {
   using ArchetypeMap = std::unordered_map<ArchetypeId, ArchetypeRecord>;
   // Record in component index with component column for archetype
   std::unordered_map<ComponentId, ArchetypeMap> component_index;
-  std::unordered_map<std::string_view, ComponentId> signature_to_id; // component signature to id
+  std::unordered_map<std::string, ComponentId> signature_to_id; // component signature to id
   // std::unordered_map<ComponentId, std::any> component_default_val;
 
   // initialize world
@@ -192,11 +263,13 @@ struct World {
   // return the reference of achetype based on these components
   Archetype& archetype(const Type& type);
   Archetype& add_to_archetype(Archetype& src_archetype, ComponentId component_id);
+  Archetype& del_to_archetype(Archetype& src_archetype, ComponentId component_id);
   void add_component(EntityId entity_id, ComponentId component_id, std::any value);
   std::any& get_component(EntityId entity_id, ComponentId component_id);
   void set_component(EntityId entity_id, ComponentId component_id, std::any value);
   std::pair<bool, World::ArchetypeMap::iterator> has_component(EntityId entity_id,
                                                                ComponentId component_id);
+  void del_component(EntityId entity_id, ComponentId component_id);
 
   // create or get new component_id, no related archetypes are created here
   template <class Comp> ComponentId get_id() {
@@ -212,27 +285,12 @@ struct World {
     return iter->second;
   }
 
-  template <class... Comps> void query() {
+  template <class... Comps> Query query() {
     // dfs on archetypes' graph
-    std::vector<ComponentId> comp_ids = {get_id<Comps>()...};
-    auto sorted_comp_ids = comp_ids;
-    std::sort(sorted_comp_ids.begin(), sorted_comp_ids.end());
-
-    auto archetype_iter = archetype_index.find(sorted_comp_ids);
-    if (archetype_iter == archetype_index.end())
-      return;
-
-    auto& archetype_node = archetype_iter->second;
-    printf("archetype %llu entity size: %llu\n", archetype_node.id,
-           archetype_node.entity_to_row.size());
-    // start dfs
-    for (auto& node : archetype_node.add_archetypes) {
-      printf("archetype %llu entity size: %llu\n", node.second.id,
-             node.second.entity_to_row.size());
-    }
+    return Query<Comps...>(*this);
   }
 
-  template <class Comp> inline const char* signature() const { return FUNC_SIG; }
+  template <class Comp> [[nodiscard]] inline const char* signature() const { return FUNC_SIG; }
 };
 
 struct Entity {

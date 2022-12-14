@@ -43,8 +43,16 @@ Archetype& World::add_to_archetype(Archetype& src_archetype, ComponentId compone
     src_archetype.add_archetypes.emplace(component_id, dst_archetype);
     dst_archetype.del_archetypes.emplace(component_id, src_archetype);
     return dst_archetype;
+  } else {
+    Archetype& dst_archetype = archetype_iter->second;
+    src_archetype.add_archetypes.emplace(component_id, dst_archetype);
+    dst_archetype.del_archetypes.emplace(component_id, src_archetype);
+    return dst_archetype;
   }
-  return archetype_iter->second;
+}
+
+Archetype& World::del_to_archetype(Archetype& src_archetype, ComponentId component_id) {
+  return src_archetype;
 }
 
 void World::add_component(EntityId entity_id, ComponentId component_id, std::any value) {
@@ -53,18 +61,6 @@ void World::add_component(EntityId entity_id, ComponentId component_id, std::any
   Archetype& dst = add_to_archetype(src, component_id);
 
   assert(!component_index[component_id].contains(src.id) && "add multi-component is not supported");
-
-//  if (src.components.empty()) {
-//  // empty entity (empty components) condition
-//    for (int i = 0; i < dst.type.size(); i++) {
-//      size_t row = dst.components[i].size();
-//      // append default value of component
-//      dst.components[i].emplace_back(std::move(value));
-//      entity_index.erase(entity_id);
-//      entity_index.emplace(entity_id, std::move(Record(dst, row)));
-//    }
-//    return;
-//  }
 
   auto src_row = src.entity_to_row[entity_id];
   // move rest component_row from src into dst_archetype
@@ -125,6 +121,13 @@ void World::set_component(EntityId entity_id, ComponentId component_id, std::any
   } else {
     add_component(entity_id, component_id, std::move(value));
   }
+}
+
+void World::del_component(EntityId entity_id, ComponentId component_id) {
+  auto& record = entity_index.at(entity_id);
+  auto& archetype = record.archetype;
+
+
 }
 
 } // namespace ecs
