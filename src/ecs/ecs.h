@@ -160,7 +160,7 @@ struct ecs_archetype_equal_t {
 };
 
 // iterator on Archetypes' DAG
-//struct ArchetypeIterator {
+// struct ArchetypeIterator {
 //  std::reference_wrapper<Archetype> archetype_ptr;
 //  std::unordered_map<ComponentId, Archetype&>::iterator edges_iter;
 //
@@ -228,16 +228,15 @@ struct World {
     if (iter == signature_to_id.end()) {
       printf("Create component: %s\n", comp_sig);
       // storage the default value created by 'Component' type
-      // component_default_val.emplace(ecs_id_count, std::move(Comp()));
       signature_to_id[comp_sig] = ecs_id_count;
-      return ecs_id_count++; // create temporary proxy
+      return ecs_id_count++;
     }
     return iter->second;
   }
 
-//  template <class... Comps> auto query() {
-//    return Query<Comps...>(*this);
-//  }
+  //  template <class... Comps> auto query() {
+  //    return Query<Comps...>(*this);
+  //  }
 
   template <class Comp> [[nodiscard]] inline const char* signature() const { return FUNC_SIG; }
 };
@@ -282,11 +281,10 @@ struct Component {
   Component(struct World& world, ComponentId id) : world(world), id(id) {}
 };
 
-
 // Query as container form
 template <class... Comps> struct Query {
   Query(World& world) : world(world) {
-    comp_ids = std::vector<ComponentId> {{ (world.get_id<Comps>())...} };
+    comp_ids = std::vector<ComponentId>{{(world.get_id<Comps>())...}};
     auto type = comp_ids;
     std::sort(type.begin(), type.end());
     auto archetype_iter = world.archetype_index.find(type);
@@ -295,47 +293,75 @@ template <class... Comps> struct Query {
     }
   }
 
-  auto col() const {return comp_ids.size();}
-
   // recursively init related archetypes
   void init_related_archetypes(Archetype& archetype) {
     if (archetype.row() <= 0) {
       return;
     }
+    auto cols = std::vector<size_t>();
     related_archetypes.emplace_back(archetype);
-    for (auto& next_archetype : archetype.add_archetypes) {
-      init_related_archetypes(next_archetype.second);
+    for (auto comp_id : comp_ids) {
+      cols.emplace_back(world.component_index[comp_id][archetype.id].column);
+    }
+    archetypes_columns.emplace_back(std::move(cols));
+    for (auto& archetype_pair : archetype.add_archetypes) {
+      init_related_archetypes(archetype_pair.second);
     }
   }
 
-//  struct Iterator {
-//    using iterators_t = std::tuple<typename std::vector<Comps>::iterator...>;
-//    using reference_t = std::tuple<Comps&...>;
-//
-//    std::reference_wrapper<Archetype> curr_archetype;
-//    size_t curr_row, max_row;
-//    Query& query;
-//    iterators_t iterators;
-//
-//    reference_t get() {
-//      return std::apply([&](auto&&... args) { return reference_t((*args)...); }, iterators);
-//    }
-//
-//    Iterator& advance(ptrdiff_t step_size) {
-//      std::apply([&](auto&&... iter) { (iter += step_size,...); }, iterators);
-//    }
-//  };
+  struct Iterator {
+    using ref_t = std::tuple<Comps&...>;
+    Query& self;
+    size_t archetype_idx;
+    size_t row_idx;
 
+    Iterator(Query& query, size_t archetype_idx, size_t row_idx)
+        : self(query), archetype_idx(archetype_idx), row_idx(row_idx) {}
+
+    Archetype& archetype() { return self.related_archetypes[archetype_idx]; }
+    Iterator& advance(ptrdiff_t step) {
+      auto row_size = [&]() {
+        return archetype_idx >= self.related_archetypes.size() || archetype_idx < 0
+                   ? std::numeric_limits<size_t>::max()
+                   : self.related_archetypes[archetype_idx].row();
+      };
+      if (step > 0) {
+        // assume that there is a inf row dummy archetype at end of related_archetypes
+        while (step > 0 && row_idx + step >= row_size()) {
+          step -= row_size() - row_idx;
+          row_idx = 0;
+          archetype_idx++;
+        }
+      } else if (step < 0) {
+        // assert(false && "negative advance not implement yet!");
+        while (step < 0 && row_idx < step) {
+          step += row_idx + 1;
+          archetype_idx--;
+          row_idx = row_size() - 1; // assume that all row size > 0 in related archetypes
+        }
+      }
+      row_idx += step;
+      return *this;
+    }
+  };
+
+  ref_t operator * () {
+
+  }
+
+  auto col() const { return comp_ids.size(); }
   size_t size() {
     size_t total_count = 0;
     for (auto& archetype : related_archetypes) {
       total_count += archetype.get().row();
     }
+    return total_count;
   }
 
   World& world;
   std::vector<std::reference_wrapper<Archetype>> related_archetypes;
   std::vector<ComponentId> comp_ids;
+  std::vector<std::vector<size_t>> archetypes_columns;
 };
 
 } // namespace ecs
