@@ -21,7 +21,7 @@ int main() {
         entities[i].add<Velocity>({-1, -1});
     }
 
-    world.query<Position>();
+    // world.query<Position>();
 
     for(auto& e : entities) {
         int flags = 0;

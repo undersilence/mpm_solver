@@ -160,75 +160,25 @@ struct ecs_archetype_equal_t {
 };
 
 // iterator on Archetypes' DAG
-struct ArchetypeIterator {
-  std::reference_wrapper<Archetype> archetype_ptr;
-  std::unordered_map<ComponentId, Archetype&>::iterator edges_iter;
+//struct ArchetypeIterator {
+//  std::reference_wrapper<Archetype> archetype_ptr;
+//  std::unordered_map<ComponentId, Archetype&>::iterator edges_iter;
+//
+//  ArchetypeIterator(Archetype& archetype) : archetype_ptr(std::ref(archetype)) {
+//    auto iter = archetype.add_archetypes.begin();
+//  }
+//
+//  Archetype& operator*() const { return archetype_ptr.get(); }
+//
+//  ArchetypeIterator& operator++() {
+//    edges_iter++;
+//    if (archetype_ptr.get().add_archetypes.end() == edges_iter) {
+//      // go to next archetype
+//    }
+//  }
+//};
 
-  ArchetypeIterator(Archetype& archetype) : archetype_ptr(std::ref(archetype)) {
-    auto iter = archetype.add_archetypes.begin();
-  }
-
-  Archetype& operator*() const { return archetype_ptr.get(); }
-
-  ArchetypeIterator& operator++() {
-    edges_iter++;
-    if (archetype_ptr.get().add_archetypes.end() == edges_iter) {
-      // go to next archetype
-    }
-  }
-};
-
-// Query as container form
-template <class... Comps> struct Query {
-  Query(World& world) : world(world), comp_ids(world.get_id<Comps>()...) {
-    auto type = comp_ids;
-    std::sort(type.begin(), type.end());
-    auto archetype_iter = world.archetype_index.find(type);
-    if (archetype_iter != world.archetype_index.end()) {
-      init_related_archetypes(archetype_iter->second);
-    }
-  }
-
-  // recursively init related archetypes
-  void init_related_archetypes(Archetype& archetype) {
-    if (archetype.row() <= 0) {
-      return;
-    }
-    related_archetypes.emplace_back(archetype);
-    for (auto& next_archetype : archetype.add_archetypes) {
-      init_related_archetypes(next_archetype.second);
-    }
-  }
-
-  struct Iterator {
-    using iterators_t = std::tuple<typename std::vector<Comps>::iterator...>;
-    using reference_t = std::tuple<Comps&...>;
-
-    std::reference_wrapper<Archetype> curr_archetype;
-    size_t curr_row, max_row;
-    Query& query;
-    iterators_t iterators;
-
-    reference_t get() {
-      return std::apply([&](auto&&... args) { return reference_t((*args)...); }, iterators);
-    }
-
-    Iterator& advance(ptrdiff_t step_size) {
-      std::apply([&](auto&&... iter) { (iter += step_size,...); }, iterators)
-    }
-  };
-
-  size_t size() {
-    size_t total_count = 0;
-    for (auto& archetype : related_archetypes) {
-      total_count += archetype.get().row();
-    }
-  }
-
-  World& world;
-  std::vector<std::reference_wrapper<Archetype>> related_archetypes;
-  std::vector<ComponentId> comp_ids;
-};
+template <class... Comps> struct Query;
 
 struct World {
 
@@ -285,10 +235,9 @@ struct World {
     return iter->second;
   }
 
-  template <class... Comps> Query query() {
-    // dfs on archetypes' graph
-    return Query<Comps...>(*this);
-  }
+//  template <class... Comps> auto query() {
+//    return Query<Comps...>(*this);
+//  }
 
   template <class Comp> [[nodiscard]] inline const char* signature() const { return FUNC_SIG; }
 };
@@ -331,6 +280,62 @@ struct Component {
   // std::string_view signature;
   struct World& world;
   Component(struct World& world, ComponentId id) : world(world), id(id) {}
+};
+
+
+// Query as container form
+template <class... Comps> struct Query {
+  Query(World& world) : world(world) {
+    comp_ids = std::vector<ComponentId> {{ (world.get_id<Comps>())...} };
+    auto type = comp_ids;
+    std::sort(type.begin(), type.end());
+    auto archetype_iter = world.archetype_index.find(type);
+    if (archetype_iter != world.archetype_index.end()) {
+      init_related_archetypes(archetype_iter->second);
+    }
+  }
+
+  auto col() const {return comp_ids.size();}
+
+  // recursively init related archetypes
+  void init_related_archetypes(Archetype& archetype) {
+    if (archetype.row() <= 0) {
+      return;
+    }
+    related_archetypes.emplace_back(archetype);
+    for (auto& next_archetype : archetype.add_archetypes) {
+      init_related_archetypes(next_archetype.second);
+    }
+  }
+
+//  struct Iterator {
+//    using iterators_t = std::tuple<typename std::vector<Comps>::iterator...>;
+//    using reference_t = std::tuple<Comps&...>;
+//
+//    std::reference_wrapper<Archetype> curr_archetype;
+//    size_t curr_row, max_row;
+//    Query& query;
+//    iterators_t iterators;
+//
+//    reference_t get() {
+//      return std::apply([&](auto&&... args) { return reference_t((*args)...); }, iterators);
+//    }
+//
+//    Iterator& advance(ptrdiff_t step_size) {
+//      std::apply([&](auto&&... iter) { (iter += step_size,...); }, iterators);
+//    }
+//  };
+
+  size_t size() {
+    size_t total_count = 0;
+    for (auto& archetype : related_archetypes) {
+      total_count += archetype.get().row();
+    }
+  }
+
+  World& world;
+  std::vector<std::reference_wrapper<Archetype>> related_archetypes;
+  std::vector<ComponentId> comp_ids;
 };
 
 } // namespace ecs
