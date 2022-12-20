@@ -19,7 +19,9 @@ template<typename... Comps> std::vector<std::any> create_elements (Comps&&... va
 }
 
 template<typename... Dummies> std::vector<Dummy> create_dummies (Dummies&&... value) {
-  return {std::forward<Dummies>(value)...};
+  std::vector<Dummy> dummies {};
+  (dummies.emplace_back(std::forward<Dummies>(value)),...);
+  return dummies;
 }
 
 int main() {

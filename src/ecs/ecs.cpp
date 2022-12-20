@@ -1,7 +1,7 @@
 #include "ecs/ecs.hpp"
 #include <numeric>
 
-namespace ecs {
+namespace sim::ecs {
 
 void World::init() { ecs_id_count = 0; }
 
@@ -10,7 +10,7 @@ Entity World::entity() {
   ecs_id_t new_entity_id = ecs_id_count++;
   auto& empty_archetype = archetype(Type());
   empty_archetype.add_entity_row(new_entity_id, {});
-  entity_index.emplace(new_entity_id, std::move(Record(empty_archetype)));
+  entity_index.emplace(new_entity_id, Record(empty_archetype));
   return {*this, new_entity_id};
 }
 
@@ -65,7 +65,7 @@ void World::add_component(ecs_id_t entity_id, ecs_id_t component_id, std::any va
 
   auto src_row = src.entity_to_row[entity_id];
   // move rest component_row from src into dst_archetype
-  for (int src_col = 0; src_col < src.type.size(); src_col++) {
+  for (size_t src_col = 0; src_col < src.type.size(); src_col++) {
     auto dst_col = component_index[src.type[src_col]][dst.id].column;
     // std::vector<std::any>&& data_row = src.get_entity_row(entity_id);
     std::any& src_value = src.components[src_col][src_row];
@@ -149,7 +149,7 @@ void World::add_components(ecs_id_t entity_id, std::vector<ecs_id_t> component_i
 
     auto src_row = src.entity_to_row[entity_id];
     // move rest component_row from src into dst_archetype
-    for (int src_col = 0; src_col < src.type.size(); src_col++) {
+    for (size_t src_col = 0; src_col < src.type.size(); src_col++) {
       auto dst_col = component_index[src.type[src_col]][dst.id].column;
       // std::vector<std::any>&& data_row = src.get_entity_row(entity_id);
       std::any& src_value = src.components[src_col][src_row];
@@ -186,8 +186,8 @@ void World::set_components(ecs_id_t entity_id, std::vector<ecs_id_t> component_i
   std::vector<size_t> set_indices;
 
   // dispatch these operations by adding and setting
-  for (int i = 0; i < component_ids.size(); ++i) {
-    if (has_component(entity_id, component_ids[i]).first) {
+  for (size_t i = 0; i < component_ids.size(); ++i) {
+    if (!has_component(entity_id, component_ids[i]).first) {
       new_component_ids.emplace_back(component_ids[i]);
       new_values.emplace_back(std::move(values[i]));
     } else {
@@ -199,8 +199,9 @@ void World::set_components(ecs_id_t entity_id, std::vector<ecs_id_t> component_i
     add_components(entity_id, std::move(new_component_ids), std::move(new_values));
   }
   for (auto i : set_indices) {
-    set_component(entity_id, std::move(component_ids[i]), std::move(values[i]));
+    auto& old_value = get_component(entity_id, component_ids[i]);
+    old_value.swap(values[i]);
   }
 }
 
-} // namespace ecs
+} // namespace sim::ecs

@@ -15,17 +15,22 @@ struct Position {
   Position(float x, float y) : x(x), y(y){}
 };
 
-
 struct Velocity {
   float x, y;
 };
 
 int main() {
-  ecs::World world;
+  sim::ecs::World world;
   int N = 10;
-  std::vector<ecs::Entity> entities;
+  std::vector<sim::ecs::Entity> entities;
   for (int i = 0; i < N; i++) {
-    entities.emplace_back(world.entity().add<Position, Velocity>());
+    entities.emplace_back(world.entity().set<Position>());
+  }
+
+  for(int i = 0; i < N; i++) {
+    if (i % 2) {
+      entities[i].set<Position, Velocity>({(float)i, (float)i}, {(float)i * i, (float)i * i});
+    }
   }
 
   // std::for_each support
@@ -36,6 +41,8 @@ int main() {
     printf("position (%f, %f), velocity (%f, %f)\n", p.x, p.y, v.x, v.y);
     p.x += v.x;
     p.y += v.y;
+    v.x *= 0.99f;
+    v.y *= 0.99f;
   });
 
   std::for_each(std::begin(Q), std::end(Q), [](std::tuple<Position&, Velocity&> pack) {

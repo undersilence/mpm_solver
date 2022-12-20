@@ -36,9 +36,9 @@ else("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
     endif(NOT CMAKE_CXX_FLAGS MATCHES "-Wextra")
 
     # Use -Werror for clang and gcc.
-    if(NOT CMAKE_CXX_FLAGS MATCHES "-Werror")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror")
-    endif(NOT CMAKE_CXX_FLAGS MATCHES "-Werror")
+#    if(NOT CMAKE_CXX_FLAGS MATCHES "-Werror")
+#        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror")
+#    endif(NOT CMAKE_CXX_FLAGS MATCHES "-Werror")
 
     # Disable C++ exceptions.
 #    string(REGEX REPLACE "-fexceptions" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
@@ -49,7 +49,16 @@ else("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti")
 endif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
 
-add_executable(mpm_solver src/main.cpp src/ecs/ecs.cpp)
+include_directories("src")
+
+find_package(spdlog CONFIG REQUIRED)
+find_package(Eigen3 CONFIG REQUIRED)
+add_library(sim_ecs STATIC src/ecs/ecs.cpp src/utils/logger.cpp src/utils/timer.cpp)
+target_link_libraries(sim_ecs PUBLIC spdlog::spdlog_header_only)
+target_link_libraries(sim_ecs PUBLIC Eigen3::Eigen)
+
+add_executable(mpm_solver src/main.cpp)
 target_include_directories(mpm_solver PUBLIC "src")
+target_link_libraries(mpm_solver PUBLIC sim_ecs)
 
 add_subdirectory(./src/test)

@@ -1,5 +1,4 @@
 #pragma once
-#include "forward.h"
 #include <algorithm>
 #include <any>
 #include <cassert>
@@ -8,8 +7,10 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include "forward.hpp"
+#include "utils/timer.hpp"
 
-namespace ecs {
+namespace sim::ecs {
 
 using ecs_id_t = uint64_t;
 // storage types identifiers
@@ -92,7 +93,7 @@ struct Archetype {
     auto nxt_row = row_to_entity.size();
     entity_to_row[entity_id] = nxt_row;
     row_to_entity[nxt_row] = entity_id;
-    for (int i = 0; i < type.size(); ++i) {
+    for (size_t i = 0; i < type.size(); ++i) {
       components[i].emplace_back(std::move(row_data[i]));
     }
   }
@@ -205,12 +206,13 @@ struct World {
                       std::vector<std::any> values);
 
   // return tuple of components' references
-  template<size_t N, typename Indices = std::make_index_sequence<N>>
+  template <size_t N, typename Indices = std::make_index_sequence<N>>
   auto get_components(ecs_id_t entity_id, std::array<ecs_id_t, N> component_ids) {
     return get_components_impl(entity_id, component_ids, Indices{});
   }
-  template<size_t N, size_t... Is>
-  auto get_components_impl(ecs_id_t entity_id, std::array<ecs_id_t, N> component_ids, std::index_sequence<Is...>) {
+  template <size_t N, size_t... Is>
+  auto get_components_impl(ecs_id_t entity_id, std::array<ecs_id_t, N> component_ids,
+                           std::index_sequence<Is...>) {
     return std::forward_as_tuple(get_component(entity_id, component_ids[Is])...);
   }
 
@@ -219,7 +221,7 @@ struct World {
     auto comp_sig = signature<Comp>();
     auto iter = signature_to_id.find(comp_sig);
     if (iter == signature_to_id.end()) {
-      printf("Create component: %s\n", comp_sig);
+      printf("create component(%s) as id(%llu).\n", comp_sig, ecs_id_count);
       // storage the default value created by 'Component' type
       signature_to_id[comp_sig] = ecs_id_count;
       return ecs_id_count++;
@@ -229,7 +231,7 @@ struct World {
 
   template <class... Comps> auto query() { return Query<Comps...>(*this); }
 
-  template <class Comp> [[nodiscard]] inline const char* signature() const { return FUNC_SIG; }
+  template <class Comp> [[nodiscard]] inline const char* signature() const { return FUNCTION_SIG; }
 };
 
 struct Entity {
@@ -242,11 +244,16 @@ struct Entity {
 
   // give default values for all, or not (default construct for all).
   template <class... Comps> Entity& add() {
-    world.add_components(id, {{world.get_id<Comps>()...}}, {{Comps{}...}});
+    std::vector<std::any> values{};
+    (values.emplace_back(std::forward<Comps>(Comps{})), ...);
+    world.add_components(id, {{world.get_id<Comps>()...}}, std::move(values));
     return *this;
   }
   template <class... Comps> Entity& add(Comps&&... value) {
-    world.add_components(id, {{world.get_id<Comps>()...}}, {{std::forward<Comps>(value)...}});
+    std::vector<std::any>
+        values{}; // to avoid unnecessary copies, explicit using emplace_back instead.
+    (values.emplace_back(std::forward<Comps>(value)), ...);
+    world.add_components(id, {{world.get_id<Comps>()...}}, std::move(values));
     return *this;
   }
 
@@ -266,7 +273,9 @@ struct Entity {
   }
 
   template <class... Comps> Entity& set(Comps&&... value) {
-    world.set_components(id, {{world.get_id<Comps>()...}}, {{std::make_any<Comps>(std::forward<Comps>(value))...}});
+    std::vector<std::any> values{};
+    (values.emplace_back(std::forward<Comps>(value)), ...);
+    world.set_components(id, {{world.get_id<Comps>()...}}, std::move(values));
     return *this;
   }
 
@@ -284,16 +293,17 @@ struct Entity {
 
 // wrapper
 struct Component {
+  struct World& world;
   ecs_id_t id; //
   // maybe has a signature
   // std::string_view signature;
-  struct World& world;
-  Component(struct World& world, ecs_id_t id) : world(world), id(id) {}
+  Component(World& world, ecs_id_t id) : world(world), id(id) {}
 };
 
 // Query as container form
 template <class... Comps> struct Query {
   Query(World& world) : world(world) {
+    FUNCTION_TIMER();
     comp_ids = std::vector<ecs_id_t>{{(world.get_id<Comps>())...}};
     auto type = comp_ids;
     std::sort(type.begin(), type.end());
@@ -305,15 +315,14 @@ template <class... Comps> struct Query {
 
   // recursively init related archetypes
   void init_related_archetypes(Archetype& archetype) {
-    if (archetype.row() <= 0) {
-      return;
+    if (archetype.row() > 0) {
+      auto cols = std::vector<size_t>();
+      related_archetypes.emplace_back(archetype);
+      for (auto comp_id : comp_ids) {
+        cols.emplace_back(world.component_index[comp_id][archetype.id].column);
+      }
+      archetypes_columns.emplace_back(std::move(cols));
     }
-    auto cols = std::vector<size_t>();
-    related_archetypes.emplace_back(archetype);
-    for (auto comp_id : comp_ids) {
-      cols.emplace_back(world.component_index[comp_id][archetype.id].column);
-    }
-    archetypes_columns.emplace_back(std::move(cols));
     for (auto& archetype_pair : archetype.add_archetypes) {
       init_related_archetypes(archetype_pair.second);
     }
@@ -398,4 +407,4 @@ template <class... Comps> struct Query {
   std::vector<std::vector<size_t>> archetypes_columns;
 };
 
-} // namespace ecs
+} // namespace sim::ecs
