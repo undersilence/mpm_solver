@@ -11,12 +11,9 @@
 
 namespace ecs {
 
-using EcsId = uint64_t;
-using EntityId = EcsId;
-using ComponentId = EcsId;
-using ArchetypeId = EcsId;
+using ecs_id_t = uint64_t;
 // storage types identifiers
-using Type = std::vector<ComponentId>;
+using Type = std::vector<ecs_id_t>;
 
 struct TypeInfo {
   size_t size;
@@ -25,20 +22,20 @@ struct TypeInfo {
 // another name: Table
 struct Archetype {
   struct World& world;
-  ArchetypeId id;
+  ecs_id_t id;
   const Type type;
   std::vector<std::vector<std::any>> components;
-  std::unordered_map<ComponentId, Archetype&> add_archetypes;
-  std::unordered_map<ComponentId, Archetype&> del_archetypes;
+  std::unordered_map<ecs_id_t, Archetype&> add_archetypes;
+  std::unordered_map<ecs_id_t, Archetype&> del_archetypes;
 
-  std::unordered_map<EntityId, size_t> entity_to_row;
-  std::unordered_map<size_t, EntityId> row_to_entity;
+  std::unordered_map<ecs_id_t, size_t> entity_to_row;
+  std::unordered_map<size_t, ecs_id_t> row_to_entity;
 
-  std::unordered_map<size_t, ComponentId> col_to_comp;
-  std::unordered_map<ComponentId, size_t> comp_to_col;
+  std::unordered_map<size_t, ecs_id_t> col_to_comp;
+  std::unordered_map<ecs_id_t, size_t> comp_to_col;
 
   Archetype() = delete;
-  Archetype(World& world, ArchetypeId id, const Type& type) : world(world), id(id), type(type) {
+  Archetype(World& world, ecs_id_t id, const Type& type) : world(world), id(id), type(type) {
     components.resize(type.size());
     for (auto& column : components) {
       column.clear();
@@ -68,7 +65,7 @@ struct Archetype {
   auto row() const { return row_to_entity.size(); }
   auto col() const { return type.size(); }
 
-  [[nodiscard]] std::vector<std::any> get_entity_row(EntityId entity_id) const {
+  [[nodiscard]] std::vector<std::any> get_entity_row(ecs_id_t entity_id) const {
     assert(entity_to_row.contains(entity_id) && "entity not exists in this archetype.");
     auto row = entity_to_row.at(entity_id);
     std::vector<std::any> row_data;
@@ -78,7 +75,7 @@ struct Archetype {
     return row_data;
   }
 
-  //  std::vector<std::reference_wrapper<std::any>> get_entity_row(EntityId entity_id) {
+  //  std::vector<std::reference_wrapper<std::any>> get_entity_row(ecs_id_t entity_id) {
   //    assert(entity_to_row.contains(entity_id) && "entity not exists in this archetype.");
   //    auto row = entity_to_row.at(entity_id);
   //    std::vector<std::reference_wrapper<std::any>> row_data;
@@ -88,7 +85,7 @@ struct Archetype {
   //    return row_data;
   //  }
 
-  void add_entity_row(EntityId entity_id, std::vector<std::any>&& row_data) {
+  void add_entity_row(ecs_id_t entity_id, std::vector<std::any>&& row_data) {
     assert(!entity_to_row.contains(entity_id) && "entity already exists");
     assert(row_data.size() == type.size() &&
            "row_data size should equals to the size of archetype:: type list.");
@@ -100,7 +97,7 @@ struct Archetype {
     }
   }
 
-  void set_entity_row(EntityId entity_id, std::vector<std::any>&& row_data) {
+  void set_entity_row(ecs_id_t entity_id, std::vector<std::any>&& row_data) {
     assert(row_data.size() == type.size() &&
            "row_data size should equals to the size of archetype:: type list.");
     if (entity_to_row.contains(entity_id)) {
@@ -114,7 +111,7 @@ struct Archetype {
     }
   }
 
-  void del_entity_row(EntityId entity_id) {
+  void del_entity_row(ecs_id_t entity_id) {
     if (!row_to_entity.empty() && !entity_to_row.contains(entity_id)) {
       // entity not exists
       return;
@@ -134,7 +131,7 @@ struct Archetype {
   }
 
   // further entity sorting support
-  void swap_entity_row(EntityId entity_x, EntityId entity_y) {
+  void swap_entity_row(ecs_id_t entity_x, ecs_id_t entity_y) {
     auto& row_x = entity_to_row[entity_x];
     auto& row_y = entity_to_row[entity_y];
     // swap each component
@@ -165,10 +162,9 @@ struct World {
 
   struct Record { // entity query caching
     Archetype& archetype;
-    size_t row;
     Record() = delete;
-    Record(Record&& other) noexcept : archetype(other.archetype), row(other.row) {}
-    Record(Archetype& archetype, size_t row) : archetype(archetype), row(row) {}
+    Record(Record&& other) noexcept : archetype(other.archetype) {}
+    Record(Archetype& archetype) : archetype(archetype) {}
   };
 
   struct ArchetypeRecord {
@@ -179,13 +175,13 @@ struct World {
   // Find an archetype by its list of component ids, where archetype stored
   std::unordered_map<Type, Archetype, ecs_ids_hash_t, ecs_archetype_equal_t> archetype_index;
   // Find the archetype for an entity
-  std::unordered_map<EntityId, Record> entity_index;
+  std::unordered_map<ecs_id_t, Record> entity_index;
   // Used to lookup components in archetypes
-  using ArchetypeMap = std::unordered_map<ArchetypeId, ArchetypeRecord>;
+  using ArchetypeMap = std::unordered_map<ecs_id_t, ArchetypeRecord>;
   // Record in component index with component column for archetype
-  std::unordered_map<ComponentId, ArchetypeMap> component_index;
-  std::unordered_map<std::string, ComponentId> signature_to_id; // component signature to id
-  // std::unordered_map<ComponentId, std::any> component_default_val;
+  std::unordered_map<ecs_id_t, ArchetypeMap> component_index;
+  std::unordered_map<std::string, ecs_id_t> signature_to_id; // component signature to id
+  // std::unordered_map<ecs_id_t, std::any> component_default_val;
 
   // initialize world
   World() { init(); }
@@ -193,17 +189,33 @@ struct World {
   struct Entity entity();
   // return the reference of achetype based on these components
   Archetype& archetype(const Type& type);
-  Archetype& add_to_archetype(Archetype& src_archetype, ComponentId component_id);
-  Archetype& del_to_archetype(Archetype& src_archetype, ComponentId component_id);
-  void add_component(EntityId entity_id, ComponentId component_id, std::any value);
-  std::any& get_component(EntityId entity_id, ComponentId component_id);
-  void set_component(EntityId entity_id, ComponentId component_id, std::any value);
-  std::pair<bool, World::ArchetypeMap::iterator> has_component(EntityId entity_id,
-                                                               ComponentId component_id);
-  void del_component(EntityId entity_id, ComponentId component_id);
+  Archetype& add_to_archetype(Archetype& src_archetype, ecs_id_t component_id);
+  Archetype& del_to_archetype(Archetype& src_archetype, ecs_id_t component_id);
+  void add_component(ecs_id_t entity_id, ecs_id_t component_id, std::any value);
+  std::any& get_component(ecs_id_t entity_id, ecs_id_t component_id);
+  void set_component(ecs_id_t entity_id, ecs_id_t component_id, std::any value);
+  std::pair<bool, World::ArchetypeMap::iterator> has_component(ecs_id_t entity_id,
+                                                               ecs_id_t component_id);
+  void del_component(ecs_id_t entity_id, ecs_id_t component_id);
+
+  // multiple operations, small vectors suitable for passing-by-copy
+  void add_components(ecs_id_t entity_id, std::vector<ecs_id_t> component_ids,
+                      std::vector<std::any> values);
+  void set_components(ecs_id_t entity_id, std::vector<ecs_id_t> component_ids,
+                      std::vector<std::any> values);
+
+  // return tuple of components' references
+  template<size_t N, typename Indices = std::make_index_sequence<N>>
+  auto get_components(ecs_id_t entity_id, std::array<ecs_id_t, N> component_ids) {
+    return get_components_impl(entity_id, component_ids, Indices{});
+  }
+  template<size_t N, size_t... Is>
+  auto get_components_impl(ecs_id_t entity_id, std::array<ecs_id_t, N> component_ids, std::index_sequence<Is...>) {
+    return std::forward_as_tuple(get_component(entity_id, component_ids[Is])...);
+  }
 
   // create or get new component_id, no related archetypes are created here
-  template <class Comp> ComponentId get_id() {
+  template <class Comp> ecs_id_t get_id() {
     auto comp_sig = signature<Comp>();
     auto iter = signature_to_id.find(comp_sig);
     if (iter == signature_to_id.end()) {
@@ -221,17 +233,33 @@ struct World {
 };
 
 struct Entity {
-  World& world; // must init by world
-  EntityId id;
-  Entity(World& world, EntityId id) : world(world), id(id) {}
+  World& world;
+  ecs_id_t id;
+  Entity(World& world, ecs_id_t id) : world(world), id(id) {}
   Entity() = delete;
   Entity(const Entity&) = default;
   Entity(Entity&&) = default;
 
-  template <class Comp> Entity& add(Comp&& value = Comp()) {
+  // give default values for all, or not (default construct for all).
+  template <class... Comps> Entity& add() {
+    std::vector<ecs_id_t> comp_ids = {{world.get_id<Comps>()...}};
+    world.add_components(id, std::move(comp_ids), {{Comps{}...}});
+    return *this;
+  }
+  template <class... Comps> Entity& add(Comps&&... value) {
+    std::vector<ecs_id_t> comp_ids = {{world.get_id<Comps>()...}};
+    world.add_components(id, std::move(comp_ids), {{value...}});
+    return *this;
+  }
+
+  template <class Comp> Entity& add(Comp&& value = Comp{}) {
     auto comp_id = world.get_id<Comp>();
     world.add_component(id, comp_id, std::forward<Comp>(value));
     return *this;
+  }
+
+  template <class... Comps> auto get() {
+    return std::forward_as_tuple(world.get_component(id, world.get_id<Comps>())...);
   }
 
   template <class Comp> Comp& get() {
@@ -239,7 +267,13 @@ struct Entity {
     return std::any_cast<Comp&>(world.get_component(id, comp_id));
   }
 
-  template <class Comp> Entity& set(Comp&& value = Comp()) {
+  template <class... Comps> Entity& set(Comps&&... value) {
+    std::vector<ecs_id_t> comp_ids = {{world.get_id<Comps>()...}};
+    world.set_components(id, std::move(comp_ids), {{value...}});
+    return *this;
+  }
+
+  template <class Comp> Entity& set(Comp&& value = Comp{}) {
     auto comp_id = world.get_id<Comp>();
     world.set_component(id, comp_id, std::forward<Comp>(value));
     return *this;
@@ -253,17 +287,17 @@ struct Entity {
 
 // wrapper
 struct Component {
-  ComponentId id; //
+  ecs_id_t id; //
   // maybe has a signature
   // std::string_view signature;
   struct World& world;
-  Component(struct World& world, ComponentId id) : world(world), id(id) {}
+  Component(struct World& world, ecs_id_t id) : world(world), id(id) {}
 };
 
 // Query as container form
 template <class... Comps> struct Query {
   Query(World& world) : world(world) {
-    comp_ids = std::vector<ComponentId>{{(world.get_id<Comps>())...}};
+    comp_ids = std::vector<ecs_id_t>{{(world.get_id<Comps>())...}};
     auto type = comp_ids;
     std::sort(type.begin(), type.end());
     auto archetype_iter = world.archetype_index.find(type);
@@ -307,7 +341,6 @@ template <class... Comps> struct Query {
     }
 
     Iterator& advance(ptrdiff_t step) {
-      printf("iterator advance %lld\n", step);
       auto row_size = [&]() {
         return archetype_idx >= self.related_archetypes.size() || archetype_idx < 0
                    ? std::numeric_limits<size_t>::max()
@@ -337,14 +370,15 @@ template <class... Comps> struct Query {
     }
 
     template <size_t... Is> ref_t get(std::index_sequence<Is...>) {
-      return std::forward_as_tuple(get_impl<Comps, Is>()...);
+      return std::forward_as_tuple(get<Comps, Is>()...);
     }
 
     // should not use auto as return val, case any_cast<T> could return pointer here.
-    template <typename Comp, size_t I> Comp& get_impl() {
+    template <typename Comp, size_t I> Comp& get() {
       auto& archetype_ref = self.related_archetypes[archetype_idx];
       auto& col_idx = self.archetypes_columns[archetype_idx][I];
-      // printf("Get value at (%d, %d) of archetype_%d (type: %s)\n", col_idx, row_idx, archetype_ref.get().id, self.world.signature<Comp>());
+      // printf("Get value at (%d, %d) of archetype_%d (type: %s)\n", col_idx, row_idx,
+      // archetype_ref.get().id, self.world.signature<Comp>());
       return std::any_cast<Comp&>(archetype_ref.get().components[col_idx][row_idx]);
     }
   };
@@ -363,7 +397,7 @@ template <class... Comps> struct Query {
 
   World& world;
   std::vector<std::reference_wrapper<Archetype>> related_archetypes;
-  std::vector<ComponentId> comp_ids;
+  std::vector<ecs_id_t> comp_ids;
   std::vector<std::vector<size_t>> archetypes_columns;
 };
 
