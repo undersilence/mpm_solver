@@ -159,25 +159,6 @@ struct ecs_archetype_equal_t {
   bool operator()(const Type& lhs, const Type& rhs) const { return lhs == rhs; }
 };
 
-// iterator on Archetypes' DAG
-// struct ArchetypeIterator {
-//  std::reference_wrapper<Archetype> archetype_ptr;
-//  std::unordered_map<ComponentId, Archetype&>::iterator edges_iter;
-//
-//  ArchetypeIterator(Archetype& archetype) : archetype_ptr(std::ref(archetype)) {
-//    auto iter = archetype.add_archetypes.begin();
-//  }
-//
-//  Archetype& operator*() const { return archetype_ptr.get(); }
-//
-//  ArchetypeIterator& operator++() {
-//    edges_iter++;
-//    if (archetype_ptr.get().add_archetypes.end() == edges_iter) {
-//      // go to next archetype
-//    }
-//  }
-//};
-
 template <class... Comps> struct Query;
 
 struct World {
@@ -234,9 +215,7 @@ struct World {
     return iter->second;
   }
 
-  //  template <class... Comps> auto query() {
-  //    return Query<Comps...>(*this);
-  //  }
+  template <class... Comps> auto query() { return Query<Comps...>(*this); }
 
   template <class Comp> [[nodiscard]] inline const char* signature() const { return FUNC_SIG; }
 };
@@ -309,21 +288,30 @@ template <class... Comps> struct Query {
     }
   }
 
+  // Iterator definition
   struct Iterator {
+    using val_t = std::tuple<Comps...>;
     using ref_t = std::tuple<Comps&...>;
     Query& self;
     size_t archetype_idx;
     size_t row_idx;
+    static constexpr size_t N = sizeof...(Comps);
 
     Iterator(Query& query, size_t archetype_idx, size_t row_idx)
         : self(query), archetype_idx(archetype_idx), row_idx(row_idx) {}
 
-    Archetype& archetype() { return self.related_archetypes[archetype_idx]; }
+    Iterator& operator++() { return advance(1); };
+
+    bool operator==(const Iterator& rhs) {
+      return &self == &rhs.self && archetype_idx == rhs.archetype_idx && row_idx == rhs.row_idx;
+    }
+
     Iterator& advance(ptrdiff_t step) {
+      printf("iterator advance %lld\n", step);
       auto row_size = [&]() {
         return archetype_idx >= self.related_archetypes.size() || archetype_idx < 0
                    ? std::numeric_limits<size_t>::max()
-                   : self.related_archetypes[archetype_idx].row();
+                   : self.related_archetypes[archetype_idx].get().row();
       };
       if (step > 0) {
         // assume that there is a inf row dummy archetype at end of related_archetypes
@@ -334,7 +322,7 @@ template <class... Comps> struct Query {
         }
       } else if (step < 0) {
         // assert(false && "negative advance not implement yet!");
-        while (step < 0 && row_idx < step) {
+        while (step < 0 && (ptrdiff_t)row_idx < step) {
           step += row_idx + 1;
           archetype_idx--;
           row_idx = row_size() - 1; // assume that all row size > 0 in related archetypes
@@ -343,13 +331,28 @@ template <class... Comps> struct Query {
       row_idx += step;
       return *this;
     }
+
+    template <typename Indices = std::make_index_sequence<N>> ref_t operator*() {
+      return get(Indices{});
+    }
+
+    template <size_t... Is> ref_t get(std::index_sequence<Is...>) {
+      return std::forward_as_tuple(get_impl<Comps, Is>()...);
+    }
+
+    // should not use auto as return val, case any_cast<T> could return pointer here.
+    template <typename Comp, size_t I> Comp& get_impl() {
+      auto& archetype_ref = self.related_archetypes[archetype_idx];
+      auto& col_idx = self.archetypes_columns[archetype_idx][I];
+      // printf("Get value at (%d, %d) of archetype_%d (type: %s)\n", col_idx, row_idx, archetype_ref.get().id, self.world.signature<Comp>());
+      return std::any_cast<Comp&>(archetype_ref.get().components[col_idx][row_idx]);
+    }
   };
 
-  ref_t operator * () {
+  Iterator begin() { return Iterator(*this, 0, 0); }
+  Iterator end() { return Iterator(*this, related_archetypes.size(), 0); }
 
-  }
-
-  auto col() const { return comp_ids.size(); }
+  constexpr auto col() const { return comp_ids.size(); }
   size_t size() {
     size_t total_count = 0;
     for (auto& archetype : related_archetypes) {
