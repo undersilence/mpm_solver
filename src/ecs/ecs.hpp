@@ -55,7 +55,7 @@ struct Archetype {
     comp_to_col.swap(other.comp_to_col);
     col_to_comp.swap(other.col_to_comp);
 
-    other.id = -1;
+    other.id = std::numeric_limits<uint64_t>::max();
     other.components.clear();
     other.add_archetypes.clear();
     other.del_archetypes.clear();
@@ -147,7 +147,7 @@ struct ecs_ids_hash_t {
   size_t operator()(const Type& v) const {
     size_t hash = v.size();
     for (auto& x : v)
-      hash ^= 0x9e3779b9 + (hash << 6) + (hash >> 2);
+      hash ^= x + 0x9e3779b9 + (hash << 6) + (hash >> 2);
     return hash;
   }
 };
@@ -242,13 +242,11 @@ struct Entity {
 
   // give default values for all, or not (default construct for all).
   template <class... Comps> Entity& add() {
-    std::vector<ecs_id_t> comp_ids = {{world.get_id<Comps>()...}};
-    world.add_components(id, std::move(comp_ids), {{Comps{}...}});
+    world.add_components(id, {{world.get_id<Comps>()...}}, {{Comps{}...}});
     return *this;
   }
   template <class... Comps> Entity& add(Comps&&... value) {
-    std::vector<ecs_id_t> comp_ids = {{world.get_id<Comps>()...}};
-    world.add_components(id, std::move(comp_ids), {{value...}});
+    world.add_components(id, {{world.get_id<Comps>()...}}, {{std::forward<Comps>(value)...}});
     return *this;
   }
 
@@ -268,8 +266,7 @@ struct Entity {
   }
 
   template <class... Comps> Entity& set(Comps&&... value) {
-    std::vector<ecs_id_t> comp_ids = {{world.get_id<Comps>()...}};
-    world.set_components(id, std::move(comp_ids), {{value...}});
+    world.set_components(id, {{world.get_id<Comps>()...}}, {{std::make_any<Comps>(std::forward<Comps>(value))...}});
     return *this;
   }
 

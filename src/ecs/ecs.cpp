@@ -67,7 +67,7 @@ void World::add_component(ecs_id_t entity_id, ecs_id_t component_id, std::any va
   // move rest component_row from src into dst_archetype
   for (int src_col = 0; src_col < src.type.size(); src_col++) {
     auto dst_col = component_index[src.type[src_col]][dst.id].column;
-    std::vector<std::any>&& data_row = src.get_entity_row(entity_id);
+    // std::vector<std::any>&& data_row = src.get_entity_row(entity_id);
     std::any& src_value = src.components[src_col][src_row];
     dst.components[dst_col].emplace_back(std::move(src_value));
   }
@@ -133,8 +133,7 @@ void World::del_component(ecs_id_t entity_id, ecs_id_t component_id) {
 }
 
 // add multiple components at once
-void World::add_components(ecs_id_t entity_id,
-                           std::vector<ecs_id_t> component_ids,
+void World::add_components(ecs_id_t entity_id, std::vector<ecs_id_t> component_ids,
                            std::vector<std::any> values) {
   assert(component_ids.size() == values.size() &&
          "the size of values and components size are not the same.");
@@ -152,7 +151,7 @@ void World::add_components(ecs_id_t entity_id,
     // move rest component_row from src into dst_archetype
     for (int src_col = 0; src_col < src.type.size(); src_col++) {
       auto dst_col = component_index[src.type[src_col]][dst.id].column;
-      std::vector<std::any>&& data_row = src.get_entity_row(entity_id);
+      // std::vector<std::any>&& data_row = src.get_entity_row(entity_id);
       std::any& src_value = src.components[src_col][src_row];
       dst.components[dst_col].emplace_back(std::move(src_value));
     }
@@ -171,11 +170,11 @@ void World::add_components(ecs_id_t entity_id,
 
     entity_index.erase(entity_id);
     entity_index.emplace(entity_id, Record(dst));
-    printf("add components directly!\n");
+    // printf("add components directly!\n");
   } else {
-    for(size_t i = 0; i < component_ids.size(); ++i) {
+    for (size_t i = 0; i < component_ids.size(); ++i) {
       // add component and build archetype graph one by one
-      add_component(entity_id, component_ids[i], values[i]);
+      add_component(entity_id, component_ids[i], std::move(values[i]));
     }
   }
 }
@@ -187,7 +186,7 @@ void World::set_components(ecs_id_t entity_id, std::vector<ecs_id_t> component_i
   std::vector<size_t> set_indices;
 
   // dispatch these operations by adding and setting
-  for(int i = 0 ; i < component_ids.size(); ++i) {
+  for (int i = 0; i < component_ids.size(); ++i) {
     if (has_component(entity_id, component_ids[i]).first) {
       new_component_ids.emplace_back(component_ids[i]);
       new_values.emplace_back(std::move(values[i]));
@@ -200,9 +199,8 @@ void World::set_components(ecs_id_t entity_id, std::vector<ecs_id_t> component_i
     add_components(entity_id, std::move(new_component_ids), std::move(new_values));
   }
   for (auto i : set_indices) {
-    set_component(entity_id, component_ids[i], values[i]);
+    set_component(entity_id, std::move(component_ids[i]), std::move(values[i]));
   }
 }
-
 
 } // namespace ecs

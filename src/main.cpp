@@ -4,7 +4,17 @@
 
 struct Position {
   float x, y;
+  Position() = default;
+  Position(Position&&) = default;
+  Position(const Position& other) {
+    x = other.x;
+    y = other.y;
+    static int copy_count = 0;
+    printf("Copy components position (%f, %f), %d\n", x, y, ++copy_count);
+  }
+  Position(float x, float y) : x(x), y(y){}
 };
+
 
 struct Velocity {
   float x, y;
@@ -15,7 +25,7 @@ int main() {
   int N = 10;
   std::vector<ecs::Entity> entities;
   for (int i = 0; i < N; i++) {
-    entities.emplace_back(world.entity().add<Position, Velocity>({0, 0}, {1, 1}));
+    entities.emplace_back(world.entity().add<Position, Velocity>());
   }
 
   // std::for_each support
