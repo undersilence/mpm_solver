@@ -69,9 +69,6 @@ public:
     return p_where;
   }
 
-  size_t size() const { return m_size; }
-  bool empty() const { return size() > 0; }
-
   bool reserve(size_t capacity) {
     if (capacity > m_capacity) {
       void* elements = ::operator new(capacity* m_traits.size);
@@ -91,6 +88,21 @@ public:
     return false;
   }
 
+  void resize(size_t size) {
+    if (size > m_capacity) {
+      reserve(size);
+    }
+    m_size = size;
+  }
+
+  void append(void* data) {
+    if (m_size == m_capacity) {
+      reserve(m_capacity + m_capacity);
+    }
+    m_traits.ctor(end(), data); // copy construct
+    m_size++;
+  }
+
 public:
   Traits m_traits;
   size_t m_capacity;
@@ -100,18 +112,21 @@ public:
 
 vec_core_t::vec_core_t(const Traits& traits) { pimpl = new Impl(traits); }
 vec_core_t::~vec_core_t() { delete pimpl; }
-vec_core_t::value_type vec_core_t::operator[](size_t x) { return pimpl->operator[](x); }
+vec_core_t::value_type vec_core_t::operator[](size_t x) const { return pimpl->operator[](x); }
 void vec_core_t::insert(vec_core_t::const_iterator where, vec_core_t::const_iterator src_begin,
-                        vec_core_t::const_iterator src_end) {
+                        vec_core_t::const_iterator src_end) const {
   pimpl->insert(where, src_begin, src_end);
 }
 vec_core_t::iterator vec_core_t::begin() { return pimpl->begin(); }
 vec_core_t::iterator vec_core_t::end() { return pimpl->end(); }
 vec_core_t::iterator vec_core_t::begin() const { return pimpl->begin(); }
 vec_core_t::iterator vec_core_t::end() const { return pimpl->end(); }
-void vec_core_t::advance(vec_core_t::iterator& iter, size_t step) {
-  iter = (char8_t*)iter + step * pimpl->m_traits.size;
+vec_core_t::iterator vec_core_t::advance(vec_core_t::iterator iter, size_t step) {
+  return (char8_t*)iter + step * pimpl->m_traits.size;
 }
 size_t vec_core_t::size() const { return pimpl->m_size; }
-
+bool vec_core_t::empty() const { return pimpl->m_size > 0;}
+void vec_core_t::append(vec_core_t::value_type data) const { return pimpl->append(data);}
+void vec_core_t::resize(size_t size) const {return pimpl->resize(size);}
+bool vec_core_t::reserve(size_t capacity) const { return pimpl->reserve(capacity); }
 } // namespace sim::ecs

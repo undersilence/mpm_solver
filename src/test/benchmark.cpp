@@ -39,7 +39,7 @@ double test_AOS() {
   double total_p{};
   std::vector<Particle> particles;
   {
-    TIMER("AOS::init");
+    SCOPED_TIMER("AOS::init");
     for (size_t i = 0; i < N; ++i) {
       Particle particle{};
       particle.m = {1.0f};
@@ -51,7 +51,7 @@ double test_AOS() {
   }
 
   {
-    TIMER("AOS::simulation");
+    SCOPED_TIMER("AOS::simulation");
     for (size_t t = 0; t < STEPS; ++t) {
       for (size_t i = 0; i < N; ++i) {
         auto& part = particles[i];
@@ -66,7 +66,7 @@ double test_AOS() {
     }
   }
   {
-    TIMER("AOS::summary");
+    SCOPED_TIMER("AOS::summary");
     for (size_t i = 0; i < N; ++i) {
       total_p += particles[i].p.x + particles[i].p.y + particles[i].p.z;
     }
@@ -82,14 +82,14 @@ double test_SOA() {
   std::vector<Mass> m;
   double total_p = 0.0f;
   {
-    TIMER("SOA::init");
+    SCOPED_TIMER("SOA::init");
     p = std::vector<Position>(N, {0});
     v = std::vector<Velocity>(N, {0});
     f = std::vector<Force>(N, {1, 1, 1});
     m = std::vector<Mass>(N, {1});
   }
   {
-    TIMER("SOA::simulation");
+    SCOPED_TIMER("SOA::simulation");
     for(size_t t = 0; t < STEPS; ++t) {
       for(size_t i = 0; i < N; ++i) {
         f[i].y *= 0.95f;
@@ -103,7 +103,7 @@ double test_SOA() {
     }
   }
   {
-    TIMER("SOA::summary");
+    SCOPED_TIMER("SOA::summary");
     for(size_t i = 0; i < N; ++i) {
       total_p += p[i].x + p[i].y + p[i].z;
     }
@@ -118,7 +118,7 @@ double test_ECS() {
   std::vector<ecs::Entity> particles;
   double total_p{};
   {
-    TIMER("ECS::init");
+    SCOPED_TIMER("ECS::init");
     for(size_t i = 0; i < N; ++i) {
       particles.emplace_back(world.entity().add<Position, Velocity, Force, Mass>(
           {0}, {0}, {1.0f, 1.0f, 1.0f}, {1.0f}
@@ -126,7 +126,7 @@ double test_ECS() {
     }
   }
   {
-    TIMER("ECS::simulation");
+    SCOPED_TIMER("ECS::simulation");
     auto Q = world.query<Position, Velocity, Force, Mass>();
     for(size_t t = 0; t < STEPS; ++t) {
       std::for_each(std::begin(Q), std::end(Q), [](auto data) {
@@ -142,7 +142,7 @@ double test_ECS() {
     }
   }
   {
-    TIMER("ECS::summary");
+    SCOPED_TIMER("ECS::summary");
     auto Q = world.query<Position>();
     std::for_each(std::begin(Q), std::end(Q), [&](auto data) {
       auto& [p] = data;

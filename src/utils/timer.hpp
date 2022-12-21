@@ -20,5 +20,5 @@ private:
 };
 } // namespace sim
 
-#define TIMER(name) ::sim::Timer timer##__LINE__(name)
-#define FUNCTION_TIMER() TIMER(FUNCTION_SIG)
+#define SCOPED_TIMER(name) ::sim::Timer timer##__LINE__(name)
+#define FUNCTION_TIMER() SCOPED_TIMER(FUNCTION_SIG)
