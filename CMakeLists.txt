@@ -53,9 +53,9 @@ include_directories("src")
 
 find_package(spdlog CONFIG REQUIRED)
 find_package(Eigen3 CONFIG REQUIRED)
-add_library(sim_ecs STATIC src/ecs/ecs.cpp src/utils/logger.cpp src/utils/timer.cpp src/ecs/column.cpp)
-target_link_libraries(sim_ecs PUBLIC spdlog::spdlog_header_only)
-target_link_libraries(sim_ecs PUBLIC Eigen3::Eigen)
+add_library(sim_ecs STATIC src/ecs/ecs.cpp src/ecs/vec.cpp)
+#target_link_libraries(sim_ecs PUBLIC spdlog::spdlog_header_only)
+#target_link_libraries(sim_ecs PUBLIC Eigen3::Eigen)
 
 add_executable(mpm_solver src/main.cpp)
 target_include_directories(mpm_solver PUBLIC "src")

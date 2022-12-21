@@ -1,4 +1,6 @@
 #pragma once
+#include "forward.hpp"
+#include "vec.hpp"
 #include <algorithm>
 #include <any>
 #include <cassert>
@@ -7,8 +9,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include "forward.hpp"
-#include "utils/timer.hpp"
+//#include "utils/timer.hpp"
 
 namespace sim::ecs {
 
@@ -303,7 +304,7 @@ struct Component {
 // Query as container form
 template <class... Comps> struct Query {
   Query(World& world) : world(world) {
-    FUNCTION_TIMER();
+//    FUNCTION_TIMER();
     comp_ids = std::vector<ecs_id_t>{{(world.get_id<Comps>())...}};
     auto type = comp_ids;
     std::sort(type.begin(), type.end());
