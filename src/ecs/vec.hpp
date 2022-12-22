@@ -12,9 +12,29 @@ struct vec_core_t {
 public:
   typedef void* value_type;
   typedef const void* const_value_type;
-
+//
   typedef void* iterator;
   typedef const void* const_iterator;
+
+//  struct iterator {
+//    void* ptr {nullptr};
+//    size_t step_size;
+//    iterator(void* ptr, size_t step_size) : ptr(ptr), step_size {}
+//    void advance(ptrdiff_t step) {
+//      ptr = (char8_t *)ptr + step * step_size;
+//    }
+//    template<class T>
+//    T& operator*() {
+//      return *(T*)ptr;
+//    }
+//
+//  };
+//
+//  struct const_iterator {
+//    const void* ptr {nullptr};
+//    iterator(const void* ptr) : ptr(ptr) {}
+//
+//  };
 
 public:
   struct Traits {
@@ -40,16 +60,16 @@ public:
   vec_core_t(vec_core_t&&) = default;
   vec_core_t(const vec_core_t&) = default;
   ~vec_core_t();
-
+  value_type operator[](size_t);
   value_type operator[](size_t) const;
   size_t size() const;
   bool empty() const;
-  void insert(const_iterator where, const_iterator src_begin, const_iterator src_end) const;
+  void insert(const_iterator where, const_iterator src_begin, const_iterator src_end);
   iterator begin();
   iterator end();
-  iterator begin() const;
-  iterator end() const;
-  iterator advance(iterator iter, size_t step);
+  const_iterator begin() const;
+  const_iterator end() const;
+  iterator advance(iterator iter, size_t step) const;
   void resize(size_t) const;
   bool reserve(size_t) const;
   void append(value_type) const;

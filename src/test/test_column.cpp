@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <vector>
 #include <any>
+#include <span>
 #include "ecs/vec.hpp"
 #include "utils/timer.hpp"
 
@@ -23,8 +24,8 @@ public:
   }
 };
 
-static int N = 1000000;
-static int STEPS = 100;
+static size_t N = 1000000;
+static size_t STEPS = 100;
 
 void test_std_vector(const std::vector<Dummy>& test) {
   move_count = copy_count = delete_count = 0;
@@ -54,7 +55,7 @@ void test_any(const std::vector<Dummy>& test) {
     FUNCTION_TIMER();
     std::vector<std::any> vec_any;
     vec_any.reserve(N);
-    for (int i = 0; i < N; i++) {
+    for (size_t i = 0; i < N; i++) {
       vec_any.emplace_back(test[i]);
     }
     int ans = 0;
@@ -81,19 +82,22 @@ void test_vec_core_t(const std::vector<Dummy>& test) {
     FUNCTION_TIMER();
     auto vec = sim::ecs::create_vec<Dummy>();
     vec.insert(vec.end(), test.data(), test.data() + test.size());
-    int idx = 0;
     int ans = 0;
     {
       SCOPED_TIMER("vec_core_t::simulation");
       for (size_t t = 0; t < STEPS; ++t) {
-        auto p = (Dummy*)vec.begin(); // extract ptr first get best performance
-        for (int i = 0; i < N; i++) {
+        auto p = std::span((Dummy*)vec.begin(), vec.size());
+        for (size_t i = 0; i < N; i++) {
           p[i].x = p[i].x * p[i].x * 0.5f;
         }
+//        for (auto iter = vec.begin(); iter != vec.end(); iter = (Dummy*)iter + 1) {
+//          auto p = (Dummy*)iter;
+//          p->x = p->x * p->x * 0.5f; // slow, don't use it like this
+//        }
       }
     }
     auto p = (Dummy*)vec.begin();
-    for (int i = 0; i < N; i++) {
+    for (size_t i = 0; i < N; i++) {
       ans += p[i].x % 9999;
     }
     LOG_INFO("sum from vec_core_t {}", ans);
@@ -103,12 +107,12 @@ void test_vec_core_t(const std::vector<Dummy>& test) {
 
 int main() {
   std::vector<Dummy> test;
-  for(int i = 0; i < N; i++) {
+  for(size_t i = 0; i < N; i++) {
     test.emplace_back(i * i);
   }
 
   test_std_vector(test);
-  // test_any(test);
+  test_any(test);
   test_vec_core_t(test);
   return 0;
 }

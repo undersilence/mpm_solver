@@ -18,9 +18,10 @@ public:
   }
 
 public:
+  value_type operator[](size_t idx) { return address_of(m_elements, idx);}
   value_type operator[](size_t idx) const { return address_of(m_elements, idx); }
 
-  void* address_of(const void* ptr, size_t offset) const {
+  inline void* address_of(const void* ptr, size_t offset) const {
     return (char8_t*)ptr + offset * m_traits.size;
   }
 
@@ -28,8 +29,10 @@ public:
     return (char8_t*)ptr_a - (char8_t*)ptr_b;
   }
 
-  void* begin() const { return m_elements; }
-  void* end() const { return address_of(m_elements, m_size); }
+  iterator end() {return address_of(m_elements, m_size);}
+  iterator begin() {return m_elements;}
+  const_iterator begin() const { return m_elements; }
+  const_iterator end() const { return address_of(m_elements, m_size); }
 
   void move_elements_backwards(const void* first, const void* last, const void* dest) const {
     auto p_first = (char8_t*)first;
@@ -112,16 +115,18 @@ public:
 
 vec_core_t::vec_core_t(const Traits& traits) { pimpl = new Impl(traits); }
 vec_core_t::~vec_core_t() { delete pimpl; }
+
+vec_core_t::value_type vec_core_t::operator[](size_t x) { return pimpl->operator[](x);}
 vec_core_t::value_type vec_core_t::operator[](size_t x) const { return pimpl->operator[](x); }
 void vec_core_t::insert(vec_core_t::const_iterator where, vec_core_t::const_iterator src_begin,
-                        vec_core_t::const_iterator src_end) const {
+                        vec_core_t::const_iterator src_end) {
   pimpl->insert(where, src_begin, src_end);
 }
 vec_core_t::iterator vec_core_t::begin() { return pimpl->begin(); }
 vec_core_t::iterator vec_core_t::end() { return pimpl->end(); }
-vec_core_t::iterator vec_core_t::begin() const { return pimpl->begin(); }
-vec_core_t::iterator vec_core_t::end() const { return pimpl->end(); }
-vec_core_t::iterator vec_core_t::advance(vec_core_t::iterator iter, size_t step) {
+vec_core_t::const_iterator vec_core_t::begin() const { return pimpl->begin(); }
+vec_core_t::const_iterator vec_core_t::end() const { return pimpl->end(); }
+vec_core_t::iterator vec_core_t::advance(vec_core_t::iterator iter, size_t step) const {
   return (char8_t*)iter + step * pimpl->m_traits.size;
 }
 size_t vec_core_t::size() const { return pimpl->m_size; }
