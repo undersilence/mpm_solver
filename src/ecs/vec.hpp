@@ -16,32 +16,14 @@ public:
   typedef void* iterator;
   typedef const void* const_iterator;
 
-//  struct iterator {
-//    void* ptr {nullptr};
-//    size_t step_size;
-//    iterator(void* ptr, size_t step_size) : ptr(ptr), step_size {}
-//    void advance(ptrdiff_t step) {
-//      ptr = (char8_t *)ptr + step * step_size;
-//    }
-//    template<class T>
-//    T& operator*() {
-//      return *(T*)ptr;
-//    }
-//
-//  };
-//
-//  struct const_iterator {
-//    const void* ptr {nullptr};
-//    iterator(const void* ptr) : ptr(ptr) {}
-//
-//  };
-
 public:
   struct Traits {
     typedef void (*Ctor)(value_type, const_value_type);
     typedef void (*Dtor)(value_type);
+    // typedef void (*Def_Ctor)(value_type);
     Ctor ctor;
     Dtor dtor;
+    // Def_Ctor def_ctor;
     size_t size;
     Traits(Ctor ctor, Dtor dtor, size_t size) : ctor(ctor), dtor(dtor), size(size) {}
   };
@@ -49,7 +31,10 @@ public:
 public:
   template <class T> struct Element {
     static void ctor(value_type to, const_value_type from) {
-      new (to) Element(std::move(*static_cast<Element const*>(from)));
+      new (to) Element(*static_cast<Element const*>(from));
+    }
+    static void def_ctor(value_type to) {
+      new (to) Element();
     }
     static void dtor(value_type p) { static_cast<Element*>(p)->Element ::~Element(); }
     T client;
@@ -57,8 +42,8 @@ public:
 
 public:
   explicit vec_core_t(Traits const& traits);
-  vec_core_t(vec_core_t&&) = default;
-  vec_core_t(const vec_core_t&) = default;
+  vec_core_t(vec_core_t&&) noexcept ;
+  vec_core_t(const vec_core_t&);
   ~vec_core_t();
   value_type operator[](size_t);
   value_type operator[](size_t) const;
@@ -72,7 +57,10 @@ public:
   iterator advance(iterator iter, size_t step) const;
   void resize(size_t) const;
   bool reserve(size_t) const;
-  void append(value_type) const;
+  void push_back(value_type) const;
+  void clear() const;
+  void pop_back() const; // pop_back
+  void swap(size_t i, size_t j) const;
 
 public:
   struct Impl;

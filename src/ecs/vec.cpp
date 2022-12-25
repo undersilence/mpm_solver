@@ -1,4 +1,5 @@
 #include "vec.hpp"
+#include "utils/mem.hpp"
 #include <algorithm>
 #include <cassert>
 
@@ -6,6 +7,13 @@ namespace sim::ecs {
 
 struct vec_core_t::Impl {
 public:
+  Impl(const Impl& impl)
+      : m_traits(impl.m_traits), m_capacity(impl.m_capacity), m_size(impl.m_size),
+        m_elements(nullptr) {
+    // deep copy
+    reserve(m_capacity);
+    memcpy(m_elements, impl.m_elements, m_size * m_traits.size);
+  }
   explicit Impl(const Traits& traits)
       : m_traits(traits), m_capacity(0), m_size(0), m_elements(nullptr) {
     reserve(3);
@@ -18,7 +26,7 @@ public:
   }
 
 public:
-  value_type operator[](size_t idx) { return address_of(m_elements, idx);}
+  value_type operator[](size_t idx) { return address_of(m_elements, idx); }
   value_type operator[](size_t idx) const { return address_of(m_elements, idx); }
 
   inline void* address_of(const void* ptr, size_t offset) const {
@@ -29,8 +37,8 @@ public:
     return (char8_t*)ptr_a - (char8_t*)ptr_b;
   }
 
-  iterator end() {return address_of(m_elements, m_size);}
-  iterator begin() {return m_elements;}
+  iterator end() { return address_of(m_elements, m_size); }
+  iterator begin() { return m_elements; }
   const_iterator begin() const { return m_elements; }
   const_iterator end() const { return address_of(m_elements, m_size); }
 
@@ -83,7 +91,8 @@ public:
         m_traits.ctor(to, from);
         m_traits.dtor(from);
       }
-      delete[] (char8_t*)(m_elements);
+      if (m_elements != nullptr)
+        delete reinterpret_cast<char*>(m_elements);
       m_elements = elements;
       m_capacity = capacity;
       return true;
@@ -91,12 +100,16 @@ public:
     return false;
   }
 
-  void resize(size_t size) {
-    if (size > m_capacity) {
-      reserve(size);
-    }
-    m_size = size;
-  }
+  //  void resize(size_t size) {
+  //    if (size > m_size) {
+  //      reserve(size);
+  //      do {
+  //        append()
+  //      } while(m_size < size);
+  //    }
+  //
+  //    m_size = size;
+  //  }
 
   void append(void* data) {
     if (m_size == m_capacity) {
@@ -106,6 +119,20 @@ public:
     m_size++;
   }
 
+  void pop() {
+    if (m_size == 0)
+      return;
+    m_traits.dtor(address_of(m_elements, --m_size));
+  }
+
+  void swap(int i, int j) {
+    memswap(address_of(m_elements, i), address_of(m_elements, i + 1), address_of(m_elements, j));
+  }
+
+  //  void clear() {
+  //    resize(0);
+  //  }
+
 public:
   Traits m_traits;
   size_t m_capacity;
@@ -113,10 +140,16 @@ public:
   void* m_elements;
 };
 
+// very useful
+vec_core_t::vec_core_t(vec_core_t&& other) noexcept {
+  pimpl = other.pimpl;
+  other.pimpl = nullptr;
+}
+vec_core_t::vec_core_t(const vec_core_t& other) { pimpl = new Impl(*other.pimpl); }
 vec_core_t::vec_core_t(const Traits& traits) { pimpl = new Impl(traits); }
-vec_core_t::~vec_core_t() { delete pimpl; }
+vec_core_t::~vec_core_t() { if(pimpl) delete pimpl; }
 
-vec_core_t::value_type vec_core_t::operator[](size_t x) { return pimpl->operator[](x);}
+vec_core_t::value_type vec_core_t::operator[](size_t x) { return pimpl->operator[](x); }
 vec_core_t::value_type vec_core_t::operator[](size_t x) const { return pimpl->operator[](x); }
 void vec_core_t::insert(vec_core_t::const_iterator where, vec_core_t::const_iterator src_begin,
                         vec_core_t::const_iterator src_end) {
@@ -130,8 +163,12 @@ vec_core_t::iterator vec_core_t::advance(vec_core_t::iterator iter, size_t step)
   return (char8_t*)iter + step * pimpl->m_traits.size;
 }
 size_t vec_core_t::size() const { return pimpl->m_size; }
-bool vec_core_t::empty() const { return pimpl->m_size > 0;}
-void vec_core_t::append(vec_core_t::value_type data) const { return pimpl->append(data);}
-void vec_core_t::resize(size_t size) const {return pimpl->resize(size);}
+bool vec_core_t::empty() const { return pimpl->m_size > 0; }
+void vec_core_t::push_back(vec_core_t::value_type data) const { return pimpl->append(data); }
+void vec_core_t::pop_back() const { return pimpl->pop(); }
+// void vec_core_t::resize(size_t size) const {return pimpl->resize(size);}
 bool vec_core_t::reserve(size_t capacity) const { return pimpl->reserve(capacity); }
+// void vec_core_t::clear() const { return pimpl->clear(); }
+void vec_core_t::swap(size_t i, size_t j) const { pimpl->swap(i, j); }
+
 } // namespace sim::ecs

@@ -1,4 +1,3 @@
-#include <cstdio>
 #include <vector>
 #include <any>
 #include <span>
@@ -53,23 +52,23 @@ void test_any(const std::vector<Dummy>& test) {
   move_count = copy_count = delete_count = 0;
   {
     FUNCTION_TIMER();
-    std::vector<std::any> vec_any;
-    vec_any.reserve(N);
+    std::any vec_any = std::make_any<std::vector<Dummy>>();
+    auto vec =  std::any_cast<std::vector<Dummy>&>(vec_any);
+    vec.reserve(N);
     for (size_t i = 0; i < N; i++) {
-      vec_any.emplace_back(test[i]);
+      vec.emplace_back(test[i]);
     }
     int ans = 0;
     {
       SCOPED_TIMER("any::simulation");
       for (size_t t = 0; t < STEPS; ++t) {
-        for (size_t i = 0; i < vec_any.size(); i++) {
-          auto& d = std::any_cast<Dummy&>(vec_any[i]);
-          d.x = d.x * d.x * 0.5f;
+        for (size_t i = 0; i < vec.size(); i++) {
+          vec[i].x = vec[i].x * vec[i].x * 0.5f;
         }
       }
     }
-    for (size_t i = 0; i < vec_any.size(); i++) {
-      ans += std::any_cast<Dummy&>(vec_any[i]).x % 9999;
+    for (size_t i = 0; i < vec.size(); i++) {
+      ans += vec[i].x % 9999;
     }
     LOG_INFO("sum from std::vector<std::any> {}", ans);
   }

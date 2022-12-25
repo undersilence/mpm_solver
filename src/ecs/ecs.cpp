@@ -23,7 +23,7 @@ Archetype& World::archetype(const Type& type) {
     for (size_t i = 0; i < type.size(); ++i) {
       component_index[type[i]][archetype.id] = ArchetypeRecord{i};
     }
-    auto p = archetype_index.emplace(std::make_pair(type, std::move(archetype)));
+    auto p = archetype_index.emplace(type, std::move(archetype));
     assert(p.second && "emplace new archetype failed.");
     return p.first->second;
   } else {
@@ -56,7 +56,7 @@ Archetype& World::del_to_archetype(Archetype& src_archetype, ecs_id_t component_
   return src_archetype;
 }
 
-void World::add_component(ecs_id_t entity_id, ecs_id_t component_id, std::any value) {
+void World::add_component(ecs_id_t entity_id, ecs_id_t component_id, void* value) {
   Record& record = entity_index.at(entity_id);
   Archetype& src = record.archetype;
   Archetype& dst = add_to_archetype(src, component_id);
@@ -68,15 +68,15 @@ void World::add_component(ecs_id_t entity_id, ecs_id_t component_id, std::any va
   for (size_t src_col = 0; src_col < src.type.size(); src_col++) {
     auto dst_col = component_index[src.type[src_col]][dst.id].column;
     // std::vector<std::any>&& data_row = src.get_entity_row(entity_id);
-    std::any& src_value = src.components[src_col][src_row];
-    dst.components[dst_col].emplace_back(std::move(src_value));
+    auto src_value = src.components[src_col][src_row];
+    dst.components[dst_col].push_back(src_value);
   }
   src.del_entity_row(entity_id);
 
   // add default component value into dst_archetype[dst_column][dst_row] first
   auto dst_col = component_index[component_id][dst.id].column;
   auto dst_row = dst.components[dst_col].size();
-  dst.components[dst_col].emplace_back(std::move(value));
+  dst.components[dst_col].push_back(value);
   // update entity_index, this will erase the previous Record&
 
   dst.entity_to_row[entity_id] = dst_row;
@@ -90,7 +90,7 @@ void World::add_component(ecs_id_t entity_id, ecs_id_t component_id, std::any va
          "please check the entity <=> row pair in dst archetype.");
 }
 
-std::any& World::get_component(ecs_id_t entity_id, ecs_id_t component_id) {
+void* World::get_component(ecs_id_t entity_id, ecs_id_t component_id) {
   auto& record = entity_index.at(entity_id);
   auto& archetype = record.archetype;
 
@@ -117,13 +117,13 @@ auto World::has_component(ecs_id_t entity_id, ecs_id_t component_id)
   return std::make_pair(iter != archetype_map.end(), iter);
 }
 
-void World::set_component(ecs_id_t entity_id, ecs_id_t component_id, std::any value) {
+void World::set_component(ecs_id_t entity_id, ecs_id_t component_id, void* value) {
   auto res = has_component(entity_id, component_id);
   if (res.first) {
-    auto& old_value = get_component(entity_id, component_id);
-    old_value = value;
+    auto old_value = get_component(entity_id, component_id);
+    component_traits.at(component_id).ctor(old_value, value); // basically, it's copy
   } else {
-    add_component(entity_id, component_id, std::move(value));
+    add_component(entity_id, component_id, value);
   }
 }
 
@@ -134,9 +134,9 @@ void World::del_component(ecs_id_t entity_id, ecs_id_t component_id) {
 
 // add multiple components at once
 void World::add_components(ecs_id_t entity_id, std::vector<ecs_id_t> component_ids,
-                           std::vector<std::any> values) {
-  assert(component_ids.size() == values.size() &&
-         "the size of values and components size are not the same.");
+                           void** values) {
+//  assert(component_ids.size() == values.size() &&
+//         "the size of values and components size are not the same.");
   auto& src = entity_index.at(entity_id).archetype;
   // initialized dst archetype type info
   auto dst_type = src.type;
@@ -152,15 +152,15 @@ void World::add_components(ecs_id_t entity_id, std::vector<ecs_id_t> component_i
     for (size_t src_col = 0; src_col < src.type.size(); src_col++) {
       auto dst_col = component_index[src.type[src_col]][dst.id].column;
       // std::vector<std::any>&& data_row = src.get_entity_row(entity_id);
-      std::any& src_value = src.components[src_col][src_row];
-      dst.components[dst_col].emplace_back(std::move(src_value));
+      auto src_value = src.components[src_col][src_row];
+      dst.components[dst_col].push_back(src_value);
     }
     src.del_entity_row(entity_id);
 
     for (size_t i = 0; i < component_ids.size(); ++i) {
       // add default component value into dst_archetype[dst_column][dst_row] first
       auto dst_col = component_index[component_ids[i]][dst.id].column;
-      dst.components[dst_col].emplace_back(std::move(values[i]));
+      dst.components[dst_col].push_back(values[i]);
     }
 
     // update entity_index, this will erase the previous Record&
@@ -174,34 +174,44 @@ void World::add_components(ecs_id_t entity_id, std::vector<ecs_id_t> component_i
   } else {
     for (size_t i = 0; i < component_ids.size(); ++i) {
       // add component and build archetype graph one by one
-      add_component(entity_id, component_ids[i], std::move(values[i]));
+      add_component(entity_id, component_ids[i], values[i]);
     }
   }
 }
 
 void World::set_components(ecs_id_t entity_id, std::vector<ecs_id_t> component_ids,
-                           std::vector<std::any> values) {
+                           void** values) {
   std::vector<ecs_id_t> new_component_ids;
-  std::vector<std::any> new_values;
+  auto new_values = (void**)malloc(component_ids.size() * sizeof(void*));
+  size_t new_count = 0;
   std::vector<size_t> set_indices;
 
   // dispatch these operations by adding and setting
   for (size_t i = 0; i < component_ids.size(); ++i) {
     if (!has_component(entity_id, component_ids[i]).first) {
       new_component_ids.emplace_back(component_ids[i]);
-      new_values.emplace_back(std::move(values[i]));
+      new_values[new_count++] = values[i];
     } else {
       set_indices.emplace_back(i);
     }
   }
 
   if (!new_component_ids.empty()) {
-    add_components(entity_id, std::move(new_component_ids), std::move(new_values));
+    add_components(entity_id, std::move(new_component_ids), new_values);
   }
   for (auto i : set_indices) {
-    auto& old_value = get_component(entity_id, component_ids[i]);
-    old_value.swap(values[i]);
+    auto old_value = get_component(entity_id, component_ids[i]);
+    component_traits.at(component_ids[i]).ctor(old_value, values[i]);
   }
+  free(new_values);
 }
 
+Archetype::Archetype(World& world, ecs_id_t id, const Type& type)
+    : world(world), id(id), type(type) {
+  components.clear();
+  for (int i = 0; i < type.size(); i++) {
+    auto& traits = world.component_traits.at(type[i]);
+    components.emplace_back(traits);
+  }
+}
 } // namespace sim::ecs

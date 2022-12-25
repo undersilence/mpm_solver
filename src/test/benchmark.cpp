@@ -31,8 +31,8 @@ struct Particle {
   Particle(Particle&&) = default;
 };
 
-static constexpr size_t N = 10000000;
-static constexpr size_t STEPS = 60;
+static constexpr size_t N = 1000000;
+static constexpr size_t STEPS = 10;
 
 double test_AOS() {
   FUNCTION_TIMER();
@@ -155,8 +155,8 @@ double test_ECS() {
 int main() {
   LOG_INFO("Start AOS/SOA/ECS benchmark...");
 
-  LOG_INFO("total_p is {} from test_AOS", test_AOS());
-  LOG_INFO("total_p is {} from test_SOA", test_SOA());
+  // LOG_INFO("total_p is {} from test_AOS", test_AOS());
+  // LOG_INFO("total_p is {} from test_SOA", test_SOA());
   LOG_INFO("total_p is {} from test_ECS", test_ECS());
 
   return 0;
