@@ -1,4 +1,4 @@
-#include "ecs/ecs.hpp"
+#include "ecs.hpp"
 #include <numeric>
 
 namespace sim::ecs {

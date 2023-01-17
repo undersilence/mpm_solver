@@ -53,7 +53,7 @@ include_directories("src")
 
 find_package(spdlog CONFIG REQUIRED)
 find_package(Eigen3 CONFIG REQUIRED)
-add_library(sim_ecs STATIC src/ecs/ecs.cpp src/ecs/vec.cpp src/utils/timer.cpp src/utils/logger.cpp)
+add_library(sim_ecs STATIC src/diy/ecs.cpp src/diy/vec.cpp src/utils/timer.cpp src/utils/logger.cpp src/ext/flecs.c)
 target_link_libraries(sim_ecs PUBLIC spdlog::spdlog_header_only)
 #target_link_libraries(sim_ecs PUBLIC Eigen3::Eigen)
 

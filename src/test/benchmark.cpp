@@ -1,10 +1,12 @@
 //
 // Created by 立 on 2022/12/20.
 //
-#include "ecs/ecs.hpp"
+#include "diy/ecs.hpp"
 #include "utils/timer.hpp"
 #include <iostream>
 #include <vector>
+
+#include "ext/flecs.h"
 
 struct Position {
   float x, y, z;
@@ -152,12 +154,49 @@ double test_ECS() {
   return total_p;
 }
 
+double test_FLECS() {
+  FUNCTION_TIMER();
+  flecs::world world;
+  auto Q = world.query<Position, Velocity, Force, Mass>();
+  double total_p{};
+  {
+    SCOPED_TIMER("FLECS::init");
+    for (size_t i = 0; i < N; i++) {
+      auto e = world.entity();
+      e.set<Position>({}).set<Velocity>({}).set<Force>({1, 1, 1}).set<Mass>({1});
+    }
+  }
+  {
+    SCOPED_TIMER("FLECS::simulation");
+    for(size_t t = 0; t < STEPS; ++t) {
+      Q.each([](Position& p, Velocity& v, Force& f, Mass& m) {
+        f.y *= 0.95f;
+        v.x += f.x * m.value;
+        v.y += f.y * m.value;
+        v.z += f.z * m.value;
+        p.x += v.x;
+        p.y += v.y;
+        p.z += v.z;
+      });
+    }
+  }
+  {
+    SCOPED_TIMER("FLECS::summary");
+    auto QQ = world.query<Position>();
+    QQ.each([&](Position& p) {
+      total_p += p.x + p.y + p.z;
+    });
+  }
+  return total_p;
+}
+
 int main() {
   LOG_INFO("Start AOS/SOA/ECS benchmark...");
 
-  // LOG_INFO("total_p is {} from test_AOS", test_AOS());
-  // LOG_INFO("total_p is {} from test_SOA", test_SOA());
+  LOG_INFO("total_p is {} from test_AOS", test_AOS());
+  LOG_INFO("total_p is {} from test_SOA", test_SOA());
   LOG_INFO("total_p is {} from test_ECS", test_ECS());
+  LOG_INFO("total_p is {} from test_FLECS", test_FLECS());
 
   return 0;
 }

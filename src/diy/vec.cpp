@@ -1,5 +1,5 @@
 #include "vec.hpp"
-#include "utils/mem.hpp"
+#include "mem.hpp"
 #include <algorithm>
 #include <cassert>
 

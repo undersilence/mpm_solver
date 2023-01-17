@@ -5,6 +5,13 @@
 #include <new>
 
 namespace sim::ecs {
+
+struct Traits {
+
+};
+
+
+
 // c-style type erasure but implement it with cpp-style ;)
 // pity that the move semantic is not supported by this implementation, and idk how to.
 // try to implement emplace_back but failed with the template dependency of Traits
