@@ -1,7 +1,3 @@
-//
-// Created by 立 on 2022/12/21.
-//
-
 #include "utils/timer.hpp"
 
 namespace sim {
@@ -24,8 +20,8 @@ void Timer::stop() {
   int64_t end_count =
       std::chrono::time_point_cast<std::chrono::microseconds>(end_point).time_since_epoch().count();
   // writes profiles here
-  uint32_t tid = std::hash<std::thread::id>{}(std::this_thread::get_id());
-  LOG_INFO("{} us elapsed for {} in thread {}.", end_count - start_count, name, tid);
+  auto tid = std::hash<std::thread::id>{}(std::this_thread::get_id());
+  LOG_INFO("{}us elapsed for {} in thread {}.", end_count - start_count, name, tid);
   is_stopped = true;
 }
 

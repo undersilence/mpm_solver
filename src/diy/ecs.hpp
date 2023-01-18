@@ -269,6 +269,7 @@ struct Entity {
     free_default_values(values);
     return *this;
   }
+
   template <class... Comps> Entity& add(Comps&&... value) {
     auto values = malloc_values<Comps...>(std::make_index_sequence<sizeof...(Comps)>{},
                                           std::forward<Comps>(value)...);

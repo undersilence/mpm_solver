@@ -125,7 +125,7 @@ public:
     m_traits.dtor(address_of(m_elements, --m_size));
   }
 
-  void swap(int i, int j) {
+  void swap(size_t i, size_t j) {
     memswap(address_of(m_elements, i), address_of(m_elements, i + 1), address_of(m_elements, j));
   }
 

@@ -1,6 +1,3 @@
-//
-// Created by 立 on 2022/12/20.
-//
 #include "diy/ecs.hpp"
 #include "utils/timer.hpp"
 #include <iostream>
