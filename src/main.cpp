@@ -39,10 +39,10 @@ int main() {
     // auto& p = std::get<0>(pack);
     auto& [p, v] = pack;
     printf("position (%f, %f), velocity (%f, %f)\n", p.x, p.y, v.x, v.y);
-    p.x += v.x;
-    p.y += v.y;
     v.x *= 0.99f;
     v.y *= 0.99f;
+    p.x += v.x;
+    p.y += v.y;
   });
 
   std::for_each(std::begin(Q), std::end(Q), [](std::tuple<Position&, Velocity&> pack) {

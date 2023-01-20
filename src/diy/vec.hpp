@@ -4,14 +4,9 @@
 #include <cstddef>
 #include <new>
 
+#include "traits.hpp"
+
 namespace sim::ecs {
-
-struct Traits {
-
-};
-
-
-
 // c-style type erasure but implement it with cpp-style ;)
 // pity that the move semantic is not supported by this implementation, and idk how to.
 // try to implement emplace_back but failed with the template dependency of Traits
@@ -24,28 +19,28 @@ public:
   typedef const void* const_iterator;
 
 public:
-  struct Traits {
-    typedef void (*Ctor)(value_type, const_value_type);
-    typedef void (*Dtor)(value_type);
-    // typedef void (*Def_Ctor)(value_type);
-    Ctor ctor;
-    Dtor dtor;
-    // Def_Ctor def_ctor;
-    size_t size;
-    Traits(Ctor ctor, Dtor dtor, size_t size) : ctor(ctor), dtor(dtor), size(size) {}
-  };
+  // struct Traits {
+  //   typedef void (*Ctor)(value_type, const_value_type);
+  //   typedef void (*Dtor)(value_type);
+  //   // typedef void (*Def_Ctor)(value_type);
+  //   Ctor ctor;
+  //   Dtor dtor;
+  //   // Def_Ctor def_ctor;
+  //   size_t size;
+  //   Traits(Ctor ctor, Dtor dtor, size_t size) : ctor(ctor), dtor(dtor), size(size) {}
+  // };
 
 public:
-  template <class T> struct Element {
-    static void ctor(value_type to, const_value_type from) {
-      new (to) Element(*static_cast<Element const*>(from));
-    }
-    static void def_ctor(value_type to) {
-      new (to) Element();
-    }
-    static void dtor(value_type p) { static_cast<Element*>(p)->Element ::~Element(); }
-    T client;
-  };
+  // template <class T> struct Element {
+  //   static void ctor(value_type to, const_value_type from) {
+  //     new (to) Element(*static_cast<Element const*>(from));
+  //   }
+  //   static void def_ctor(value_type to) {
+  //     new (to) Element();
+  //   }
+  //   static void dtor(value_type p) { static_cast<Element*>(p)->Element ::~Element(); }
+  //   T client;
+  // };
 
 public:
   explicit vec_core_t(Traits const& traits);
@@ -75,7 +70,6 @@ public:
 };
 
 template <class T> vec_core_t create_vec() {
-  return vec_core_t(
-      vec_core_t::Traits(vec_core_t::Element<T>::ctor, vec_core_t::Element<T>::dtor, sizeof(T)));
+  return vec_core_t(create_traits<T>());
 }
 } // namespace sim::ecs

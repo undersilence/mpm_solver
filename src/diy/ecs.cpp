@@ -6,7 +6,7 @@ namespace sim::ecs {
 void World::init() { ecs_id_count = 0; }
 
 Entity World::entity() {
-  // add empty entity into empty archetype
+  // add empty entity into empty archetype 
   ecs_id_t new_entity_id = ecs_id_count++;
   auto& empty_archetype = archetype(Type());
   empty_archetype.add_entity_row(new_entity_id, {});
@@ -14,7 +14,7 @@ Entity World::entity() {
   return {*this, new_entity_id};
 }
 
-Archetype& World::archetype(const Type& type) {
+Archetype& World::archetype(const Type& type) {      
   // check if archetype_index exists
   auto archetype_iter = archetype_index.find(type);
   if (archetype_iter == archetype_index.end()) {
@@ -121,7 +121,7 @@ void World::set_component(ecs_id_t entity_id, ecs_id_t component_id, void* value
   auto res = has_component(entity_id, component_id);
   if (res.first) {
     auto old_value = get_component(entity_id, component_id);
-    component_traits.at(component_id).ctor(old_value, value); // basically, it's copy
+    component_traits.at(component_id).copy_ctor(old_value, value); // basically, it's copy
   } else {
     add_component(entity_id, component_id, value);
   }
@@ -201,7 +201,7 @@ void World::set_components(ecs_id_t entity_id, std::vector<ecs_id_t> component_i
   }
   for (auto i : set_indices) {
     auto old_value = get_component(entity_id, component_ids[i]);
-    component_traits.at(component_ids[i]).ctor(old_value, values[i]);
+    component_traits.at(component_ids[i]).copy_ctor(old_value, values[i]);
   }
   free(new_values);
 }

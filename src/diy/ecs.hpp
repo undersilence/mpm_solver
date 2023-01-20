@@ -4,9 +4,10 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <limits>
 
 #include "forward.hpp"
-#include "vec.hpp"
+#include "diy/vec.hpp"
 // #include "utils/timer.hpp"
 
 namespace sim::ecs {
@@ -179,7 +180,7 @@ struct World {
   // Record in component index with component column for archetype
   std::unordered_map<ecs_id_t, ArchetypeMap> component_index;
   std::unordered_map<std::string, ecs_id_t> signature_to_id; // component signature to id
-  std::unordered_map<ecs_id_t, vec_core_t::Traits> component_traits;
+  std::unordered_map<ecs_id_t, Traits> component_traits;
 
   // initialize world
   World() { init(); }
@@ -218,9 +219,7 @@ struct World {
     if (iter == signature_to_id.end()) {
       printf("create component(%s) as id(%llu).\n", comp_sig, ecs_id_count);
       // save type traits
-      component_traits.emplace(ecs_id_count, vec_core_t::Traits(vec_core_t::Element<Comp>::ctor,
-                                                                vec_core_t::Element<Comp>::dtor,
-                                                                sizeof(vec_core_t::Element<Comp>)));
+      component_traits.emplace(ecs_id_count, create_traits<Comp>());
       // storage the default value created by 'Component' type
       signature_to_id[comp_sig] = ecs_id_count;
       return ecs_id_count++;

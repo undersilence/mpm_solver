@@ -2,6 +2,7 @@
 #include "mem.hpp"
 #include <algorithm>
 #include <cassert>
+#include <cstring>
 
 namespace sim::ecs {
 
@@ -49,8 +50,7 @@ public:
     while (p_first != p_last) {
       value_type to = (p_dest -= m_traits.size);
       value_type from = (p_last -= m_traits.size);
-      m_traits.ctor(to, from);
-      m_traits.dtor(from);
+      m_traits.move_ctor(to, from);
     }
   }
 
@@ -62,7 +62,7 @@ public:
       // reminder that end() will change when reserve new space
       reserve(std::max(m_capacity + m_capacity, insert_bytes / m_traits.size + m_size + 1));
     }
-    auto p_where = (char8_t*)begin() + _offset;
+    auto p_where = (char8_t*)m_elements + _offset;
     auto p_first = (char8_t*)src_begin;
     auto p_last = (char8_t*)src_end;
     if (move_bytes > 0 && _offset >= 0) {
@@ -71,7 +71,7 @@ public:
     while (p_first != p_last) {
       value_type to = p_where;
       value_type from = p_first;
-      m_traits.ctor(to, from);
+      m_traits.copy_ctor(to, from);
       //      m_traits.dtor(from);
       p_where += m_traits.size;
       p_first += m_traits.size;
@@ -84,12 +84,11 @@ public:
     if (capacity > m_capacity) {
       void* elements = ::operator new(capacity* m_traits.size);
       if (!elements)
-        return exit(-1), "Alloc Mem Error.", false;
+        return exit(-1), "Alloc Mem Error.";
       for (size_t i = 0; i < m_size; ++i) {
         value_type to = address_of(elements, i);
         value_type from = address_of(m_elements, i);
-        m_traits.ctor(to, from);
-        m_traits.dtor(from);
+        m_traits.move_ctor(to, from);
       }
       if (m_elements != nullptr)
         delete reinterpret_cast<char*>(m_elements);
@@ -104,18 +103,26 @@ public:
   //    if (size > m_size) {
   //      reserve(size);
   //      do {
-  //        append()
+  //         append()
   //      } while(m_size < size);
   //    }
   //
   //    m_size = size;
   //  }
 
+  // return next element placement address
+  void* next_place() {
+    if (m_size == m_capacity) {
+      reserve(m_capacity + m_capacity);
+    }
+    return end();
+  }
+
   void append(void* data) {
     if (m_size == m_capacity) {
       reserve(m_capacity + m_capacity);
     }
-    m_traits.ctor(end(), data); // copy construct
+    m_traits.copy_ctor(end(), data); // copy construct
     m_size++;
   }
 
@@ -126,12 +133,8 @@ public:
   }
 
   void swap(size_t i, size_t j) {
-    memswap(address_of(m_elements, i), address_of(m_elements, i + 1), address_of(m_elements, j));
+    m_traits.swap(address_of(m_elements, i), address_of(m_elements, j));
   }
-
-  //  void clear() {
-  //    resize(0);
-  //  }
 
 public:
   Traits m_traits;
