@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <new>
 
-#include "traits.hpp"
+#include "diy/traits.hpp"
 
 namespace sim::ecs {
 // c-style type erasure but implement it with cpp-style ;)
@@ -17,7 +17,6 @@ public:
 //
   typedef void* iterator;
   typedef const void* const_iterator;
-
 public:
   // struct Traits {
   //   typedef void (*Ctor)(value_type, const_value_type);
@@ -60,8 +59,8 @@ public:
   void resize(size_t) const;
   bool reserve(size_t) const;
   void push_back(value_type) const;
-  void clear() const;
   void pop_back() const; // pop_back
+  void clear() const;
   void swap(size_t i, size_t j) const;
 
 public:

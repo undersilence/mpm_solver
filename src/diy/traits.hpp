@@ -26,8 +26,8 @@ template<class T> Traits create_traits() {
           T* tl = (T*)lhs;
           T* tr = (T*)rhs;
           T temp = std::move(*tl);
-          new(tl) T(std::move(*(T*)tr));
-          new(tr) T(std::move(temp));
+          (*tl) = std::move(T(*tr));
+          (*tr) = std::move(temp);
         },
         .dtor = [](void* dst) {
           ((T*)dst)->~T();

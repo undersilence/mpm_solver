@@ -231,7 +231,7 @@ struct World {
 
   template <class Comp> [[nodiscard]] inline const char* signature() const { return FUNCTION_SIG; }
 };
-
+  
 struct Entity {
   World& world;
   ecs_id_t id;
@@ -240,7 +240,7 @@ struct Entity {
   Entity(const Entity&) = default;
   Entity(Entity&&) = default;
 
-  // ugly implementation
+  // dirty implementation
   template <class... Comps, size_t... Is> void** malloc_default_values(std::index_sequence<Is...>) {
     // only malloc, no free
     void** values = (void**)malloc(sizeof...(Comps) * sizeof(void*));
@@ -275,6 +275,10 @@ struct Entity {
     world.add_components(id, {{world.get_id<Comps>()...}}, values);
     free(values);
     return *this;
+  }
+
+  template<class Comp, class... Args> Entity& emplace(Args&&... args) {
+
   }
 
   template <class Comp> Entity& add(Comp&& value = Comp{}) {
@@ -353,6 +357,7 @@ template <class... Comps> struct Query {
   struct Iterator {
     using val_t = std::tuple<Comps...>;
     using ref_t = std::tuple<Comps&...>;
+    using ptr_t = std::tuple<Comps*...>;
     Query& self;
     size_t archetype_idx;
     size_t row_idx;

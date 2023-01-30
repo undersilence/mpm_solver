@@ -1,5 +1,4 @@
-#include "vec.hpp"
-#include "mem.hpp"
+#include "diy/vec.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cstring>

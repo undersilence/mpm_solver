@@ -5,7 +5,6 @@
 struct Position {
   float x, y;
   Position() = default;
-  Position(Position&&) = default;
   Position(const Position& other) {
     x = other.x;
     y = other.y;
