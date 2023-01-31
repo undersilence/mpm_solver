@@ -1,13 +1,14 @@
 #pragma once
 #include <algorithm>
 #include <cassert>
+#include <limits>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <limits>
+#include <functional>
 
-#include "forward.hpp"
 #include "diy/vec.hpp"
+#include "forward.hpp"
 // #include "utils/timer.hpp"
 
 namespace sim::ecs {
@@ -231,7 +232,7 @@ struct World {
 
   template <class Comp> [[nodiscard]] inline const char* signature() const { return FUNCTION_SIG; }
 };
-  
+
 struct Entity {
   World& world;
   ecs_id_t id;
@@ -277,9 +278,7 @@ struct Entity {
     return *this;
   }
 
-  template<class Comp, class... Args> Entity& emplace(Args&&... args) {
-
-  }
+  template <class Comp, class... Args> Entity& emplace(Args&&... args) {}
 
   template <class Comp> Entity& add(Comp&& value = Comp{}) {
     auto comp_id = world.get_id<Comp>();
@@ -327,6 +326,12 @@ struct Component {
 
 // Query as container form
 template <class... Comps> struct Query {
+
+  using val_t = std::tuple<Comps...>;
+  using ref_t = std::tuple<Comps&...>;
+  using ptr_t = std::tuple<Comps*...>;
+  using cptr_t = std::tuple<const Comps*...>;
+
   Query(World& world) : world(world) {
     //    FUNCTION_TIMER();
     comp_ids = std::vector<ecs_id_t>{{(world.get_id<Comps>())...}};
@@ -347,6 +352,7 @@ template <class... Comps> struct Query {
         cols.emplace_back(world.component_index[comp_id][archetype.id].column);
       }
       archetypes_columns.emplace_back(std::move(cols));
+      _append_column_ptrs(archetype);
     }
     for (auto& archetype_pair : archetype.add_archetypes) {
       init_related_archetypes(archetype_pair.second);
@@ -355,22 +361,24 @@ template <class... Comps> struct Query {
 
   // Iterator definition
   struct Iterator {
-    using val_t = std::tuple<Comps...>;
-    using ref_t = std::tuple<Comps&...>;
-    using ptr_t = std::tuple<Comps*...>;
     Query& self;
     size_t archetype_idx;
     size_t row_idx;
+    ptr_t ptrs;
     static constexpr size_t N = sizeof...(Comps);
 
     Iterator(Query& query, size_t archetype_idx, size_t row_idx)
-        : self(query), archetype_idx(archetype_idx), row_idx(row_idx) {}
+        : self(query), archetype_idx(archetype_idx), row_idx(row_idx) {
+          ptrs = self.column_ptrs[archetype_idx];
+        }
 
     Iterator& operator++() {
       row_idx++;
+      std::apply([](auto&&... ptr) { (++ptr, ...); }, ptrs);
       while (row_idx == row_size()) {
         row_idx = 0;
         archetype_idx++;
+        ptrs = self.column_ptrs[archetype_idx];
       }
       return *this;
     };
@@ -392,6 +400,7 @@ template <class... Comps> struct Query {
           step -= row_size() - row_idx;
           row_idx = 0;
           archetype_idx++;
+          ptrs = self.column_ptrs[archetype_idx];
         }
       } else if (step < 0) {
         // assert(false && "negative advance not implement yet!");
@@ -399,13 +408,17 @@ template <class... Comps> struct Query {
           step += row_idx + 1;
           archetype_idx--;
           row_idx = row_size() - 1; // assume that all row size > 0 in related archetypes
+          ptrs = self.column_ptrs[archetype_idx];
         }
       }
       row_idx += step;
       return *this;
     }
 
-    ref_t operator*() { return get<>(std::make_index_sequence<sizeof...(Comps)>{}); }
+    ref_t operator*() { 
+      return _get();
+      // return get<>(std::make_index_sequence<sizeof...(Comps)>{}); 
+    }
 
     template <size_t... Is> inline ref_t get(std::index_sequence<Is...>) {
       return std::forward_as_tuple(get<Comps, Is>()...);
@@ -418,6 +431,11 @@ template <class... Comps> struct Query {
       // printf("Get value at (%d, %d) of archetype_%d (type: %s)\n", col_idx, row_idx,
       // archetype_ref.get().id, self.world.signature<Comp>());
       return *(Comp*)archetype_ref.get().components[col_idx][row_idx];
+    }
+
+  private:
+    auto _get() { 
+      return std::apply([&](auto&&... ptr) { return ref_t(*(ptr)...); }, ptrs);
     }
   };
 
@@ -437,6 +455,13 @@ template <class... Comps> struct Query {
   std::vector<std::reference_wrapper<Archetype>> related_archetypes;
   std::vector<ecs_id_t> comp_ids;
   std::vector<std::vector<size_t>> archetypes_columns;
+  std::vector<ptr_t> column_ptrs;
+  std::vector<cptr_t> column_c_ptrs;
+
+private:
+  void _append_column_ptrs(Archetype& archetype) {
+    column_ptrs.emplace_back(std::forward<Comps*>((Comps*)archetype.components[archetype.world.component_index[world.get_id<Comps>()][archetype.id].column].data())...);
+  }
 };
 
 } // namespace sim::ecs

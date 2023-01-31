@@ -30,8 +30,8 @@ struct Particle {
   Particle(Particle&&) = default;
 };
 
-static constexpr size_t N = 1000000;
-static constexpr size_t STEPS = 10;
+static constexpr size_t N = 10000000;
+static constexpr size_t STEPS = 1;
 
 double test_AOS() {
   FUNCTION_TIMER();
@@ -89,8 +89,8 @@ double test_SOA() {
   }
   {
     SCOPED_TIMER("SOA::simulation");
-    for(size_t t = 0; t < STEPS; ++t) {
-      for(size_t i = 0; i < N; ++i) {
+    for (size_t t = 0; t < STEPS; ++t) {
+      for (size_t i = 0; i < N; ++i) {
         f[i].y *= 0.95f;
         v[i].x += f[i].x * m[i].value;
         v[i].y += f[i].y * m[i].value;
@@ -103,7 +103,7 @@ double test_SOA() {
   }
   {
     SCOPED_TIMER("SOA::summary");
-    for(size_t i = 0; i < N; ++i) {
+    for (size_t i = 0; i < N; ++i) {
       total_p += p[i].x + p[i].y + p[i].z;
     }
   }
@@ -118,16 +118,15 @@ double test_ECS() {
   double total_p{};
   {
     SCOPED_TIMER("ECS::init");
-    for(size_t i = 0; i < N; ++i) {
+    for (size_t i = 0; i < N; ++i) {
       particles.emplace_back(world.entity().add<Position, Velocity, Force, Mass>(
-          {0}, {0}, {1.0f, 1.0f, 1.0f}, {1.0f}
-          ));
+          {0}, {0}, {1.0f, 1.0f, 1.0f}, {1.0f}));
     }
   }
+  auto Q = world.query<Position, Velocity, Force, Mass>();
   {
     SCOPED_TIMER("ECS::simulation");
-    auto Q = world.query<Position, Velocity, Force, Mass>();
-    for(size_t t = 0; t < STEPS; ++t) {
+    for (size_t t = 0; t < STEPS; ++t) {
       std::for_each(std::begin(Q), std::end(Q), [](auto data) {
         auto& [p, v, f, m] = data;
         f.y *= 0.95f;
@@ -142,10 +141,13 @@ double test_ECS() {
   }
   {
     SCOPED_TIMER("ECS::summary");
-    auto Q = world.query<Position>();
+    auto Q = world.query<Position, Velocity, Force, Mass>();
     std::for_each(std::begin(Q), std::end(Q), [&](auto data) {
-      auto& [p] = data;
-      total_p += p.x + p.y + p.z;
+      auto& [p, v, f, m] = data;
+      total_p += p.x + p.y + p.z + v.x;
+      v.x += f.x * m.value;
+      v.y += f.y * m.value;
+      v.z += f.z * m.value;
     });
   }
   return total_p;
@@ -165,7 +167,7 @@ double test_FLECS() {
   }
   {
     SCOPED_TIMER("FLECS::simulation");
-    for(size_t t = 0; t < STEPS; ++t) {
+    for (size_t t = 0; t < STEPS; ++t) {
       Q.each([](Position& p, Velocity& v, Force& f, Mass& m) {
         f.y *= 0.95f;
         v.x += f.x * m.value;
@@ -179,10 +181,8 @@ double test_FLECS() {
   }
   {
     SCOPED_TIMER("FLECS::summary");
-    auto QQ = world.query<Position>();
-    QQ.each([&](Position& p) {
-      total_p += p.x + p.y + p.z;
-    });
+    auto QQ = world.query<Position, Velocity>();
+    QQ.each([&](Position& p, Velocity& v) { total_p += p.x + p.y + p.z + v.x; });
   }
   return total_p;
 }

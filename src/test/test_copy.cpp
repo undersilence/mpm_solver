@@ -28,6 +28,6 @@ int main() {
   auto dummies = create_dummies(Dummy(1));
   auto elements = create_elements(Dummy(2));
   std::vector<Dummy> w;
-  w.emplace_back(std::move(Dummy(3)));
+  w.emplace_back(3);
   return 0;
 }

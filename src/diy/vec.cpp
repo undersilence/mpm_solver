@@ -135,6 +135,10 @@ public:
     m_traits.swap(address_of(m_elements, i), address_of(m_elements, j));
   }
 
+  void* data() const {
+    return m_elements;
+  }
+
 public:
   Traits m_traits;
   size_t m_capacity;
@@ -172,5 +176,6 @@ void vec_core_t::pop_back() const { return pimpl->pop(); }
 bool vec_core_t::reserve(size_t capacity) const { return pimpl->reserve(capacity); }
 // void vec_core_t::clear() const { return pimpl->clear(); }
 void vec_core_t::swap(size_t i, size_t j) const { pimpl->swap(i, j); }
+void* vec_core_t::data() const { return pimpl->data(); }
 
 } // namespace sim::ecs

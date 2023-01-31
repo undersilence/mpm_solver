@@ -21,7 +21,7 @@ void Timer::stop() {
       std::chrono::time_point_cast<std::chrono::microseconds>(end_point).time_since_epoch().count();
   // writes profiles here
   auto tid = std::hash<std::thread::id>{}(std::this_thread::get_id());
-  LOG_INFO("{}us elapsed for {} in thread {}.", end_count - start_count, name, tid);
+  LOG_INFO("{} us elapsed for {} \t\tin thread {}.", end_count - start_count, name, tid);
   is_stopped = true;
 }
 

@@ -62,6 +62,7 @@ public:
   void pop_back() const; // pop_back
   void clear() const;
   void swap(size_t i, size_t j) const;
+  void* data() const;
 
 public:
   struct Impl;
