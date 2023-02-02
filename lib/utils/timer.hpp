@@ -7,7 +7,7 @@
 #include "forward.hpp"
 #include "utils/logger.hpp"
 
-namespace sim {
+namespace sim::utils {
 class Timer {
 public:
   Timer(const char* name);
@@ -20,5 +20,5 @@ private:
 };
 } // namespace sim
 
-#define SCOPED_TIMER(name) ::sim::Timer timer##__LINE__(name)
+#define SCOPED_TIMER(name) ::sim::utils::Timer timer##__LINE__(name)
 #define FUNCTION_TIMER() SCOPED_TIMER(FUNCTION_SIG)

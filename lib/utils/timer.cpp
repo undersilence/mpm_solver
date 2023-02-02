@@ -1,6 +1,6 @@
 #include "utils/timer.hpp"
 
-namespace sim {
+namespace sim::utils {
 
 Timer::Timer(const char* name) : name(name) {
   start_point = std::chrono::high_resolution_clock::now();

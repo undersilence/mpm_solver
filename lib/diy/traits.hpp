@@ -12,7 +12,7 @@ struct Traits {
   move_ctor_t move_ctor;
   move_ctor_t swap;
   dtor_t dtor;
-  size_t size;
+  std::size_t size;
 };
 
 template<class T> Traits create_traits() {

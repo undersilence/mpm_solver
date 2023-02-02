@@ -1,4 +1,4 @@
-#include "ecs.hpp"
+#include "diy/ecs.hpp"
 #include <numeric>
 
 namespace sim::ecs {
@@ -209,7 +209,7 @@ void World::set_components(ecs_id_t entity_id, std::vector<ecs_id_t> component_i
 Archetype::Archetype(World& world, ecs_id_t id, const Type& type)
     : world(world), id(id), type(type) {
   components.clear();
-  for (int i = 0; i < type.size(); i++) {
+  for (size_t i = 0; i < type.size(); i++) {
     auto& traits = world.component_traits.at(type[i]);
     components.emplace_back(traits);
   }

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0.0)
+cmake_minimum_required(VERSION 3.12)
 project(mpm_solver VERSION 0.1.0)
 cmake_policy(SET CMP0054 NEW)
 
@@ -49,16 +49,7 @@ else("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti")
 endif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
 
-include_directories("src")
-
-find_package(spdlog CONFIG REQUIRED)
-find_package(Eigen3 CONFIG REQUIRED)
-add_library(sim_ecs STATIC src/diy/ecs.cpp src/diy/vec.cpp src/utils/timer.cpp src/utils/logger.cpp src/ext/flecs.c)
-target_link_libraries(sim_ecs PUBLIC spdlog::spdlog_header_only)
-#target_link_libraries(sim_ecs PUBLIC Eigen3::Eigen)
-
-add_executable(mpm_solver src/main.cpp)
-target_include_directories(mpm_solver PUBLIC "src")
-target_link_libraries(mpm_solver PUBLIC sim_ecs)
-
-add_subdirectory(./src/test)
+add_subdirectory("lib")
+add_subdirectory("external")
+add_subdirectory("examples")
+add_subdirectory("tests")

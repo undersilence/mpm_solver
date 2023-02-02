@@ -1,6 +1,6 @@
 #include "utils/logger.hpp"
 
-namespace sim {
+namespace sim::utils {
 Logger::Logger() {
   get()->set_pattern("[%^%l%$]\t%v");
   get()->set_level(spdlog::level::level_enum::trace);

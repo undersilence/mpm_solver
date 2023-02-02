@@ -1,7 +1,6 @@
 #include "diy/vec.hpp"
 #include "utils/timer.hpp"
 #include <any>
-#include <span>
 #include <vector>
 
 static int move_count = 0;
@@ -85,7 +84,7 @@ void test_vec_core_t(const std::vector<Dummy>& test) {
     {
       SCOPED_TIMER("vec_core_t::simulation");
       for (size_t t = 0; t < STEPS; ++t) {
-        auto p = std::span((Dummy*)vec.begin(), vec.size());
+        auto p = (Dummy*)vec.begin();
         for (size_t i = 0; i < N; i++) {
           p[i].x = p[i].x * p[i].x * 0.5f;
         }
