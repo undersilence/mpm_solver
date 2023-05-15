@@ -51,5 +51,5 @@ endif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
 
 add_subdirectory("lib")
 add_subdirectory("external")
-add_subdirectory("examples")
-add_subdirectory("tests")
+add_subdirectory("project")
+add_subdirectory("test")
