@@ -1,4 +1,5 @@
 #include "diy/ecs.hpp"
+#include "utils/logger.hpp"
 #include "utils/timer.hpp"
 #include <iostream>
 #include <vector>
@@ -30,7 +31,7 @@ struct Particle {
   Particle(Particle&&) = default;
 };
 
-static constexpr size_t N = 10000000;
+static constexpr size_t N = 1;
 static constexpr size_t STEPS = 1;
 
 double test_AOS() {
@@ -129,6 +130,7 @@ double test_ECS() {
     for (size_t t = 0; t < STEPS; ++t) {
       std::for_each(std::begin(Q), std::end(Q), [](auto data) {
         auto& [p, v, f, m] = data;
+        LOG_INFO("check addr of ECS components {:x}, {:x}, {:x}, {:x}", (size_t)&p, (size_t)&v, (size_t)&f, (size_t)&m);
         f.y *= 0.95f;
         v.x += f.x * m.value;
         v.y += f.y * m.value;
@@ -169,6 +171,7 @@ double test_FLECS() {
     SCOPED_TIMER("FLECS::simulation");
     for (size_t t = 0; t < STEPS; ++t) {
       Q.each([](Position& p, Velocity& v, Force& f, Mass& m) {
+        LOG_INFO("check addr of FLECS components {:x}, {:x}, {:x}, {:x}", (size_t)&p, (size_t)&v, (size_t)&f, (size_t)&m);
         f.y *= 0.95f;
         v.x += f.x * m.value;
         v.y += f.y * m.value;
@@ -190,8 +193,8 @@ double test_FLECS() {
 int main() {
   LOG_INFO("Start AOS/SOA/ECS benchmark...");
 
-  LOG_INFO("total_p is {} from test_AOS", test_AOS());
-  LOG_INFO("total_p is {} from test_SOA", test_SOA());
+  // LOG_INFO("total_p is {} from test_AOS", test_AOS());
+  // LOG_INFO("total_p is {} from test_SOA", test_SOA());
   LOG_INFO("total_p is {} from test_ECS", test_ECS());
   LOG_INFO("total_p is {} from test_FLECS", test_FLECS());
 

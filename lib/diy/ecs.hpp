@@ -17,10 +17,6 @@ using ecs_id_t = uint64_t;
 // storage types identifiers
 using Type = std::vector<ecs_id_t>;
 
-struct TypeInfo {
-  size_t size;
-};
-
 // another name: Table
 struct Archetype {
 

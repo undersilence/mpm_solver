@@ -81,7 +81,7 @@ public:
 
   bool reserve(size_t capacity) {
     if (capacity > m_capacity) {
-      void* elements = ::operator new(capacity* m_traits.size);
+      void* elements = ::operator new(capacity * m_traits.size);
       if (!elements)
         return exit(-1), "Alloc Mem Error.";
       for (size_t i = 0; i < m_size; ++i) {
