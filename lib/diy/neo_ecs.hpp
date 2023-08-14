@@ -52,7 +52,7 @@ public:
 
 public:
   // NOTE: use mimic() to create same_type empty instance
-  virtual IStorage* create_mimic() { return nullptr; };
+  virtual IStorage* create_mimic() = 0;
   virtual size_t size() const = 0;
   virtual void swap(size_t i, size_t j) = 0;
   virtual void * operator[] (size_t offset) = 0;
@@ -122,8 +122,13 @@ using Tag = std::vector<Id>;
 
 struct Entity {
 public:
+
+
   template<typename... Tys>
   Entity& set(Tys&&... args);
+
+  template<typename... Tys>
+  Entity& add(Tys&&... args);
 
   template<typename... Tys>
   bool has();
@@ -162,14 +167,17 @@ public:
   Table& operator = (Table const& table) = delete;
 
   template<class... Ty> 
-  void initialize_new_rows();
+  void add_rows();
+
+  template<class... Ty>
+  void del_rows();
 
   // use this function to create mimic empty row instance
   void mimic_rows(Table& other_table);
 
-
   size_t rows() const { return row2id.size(); }
   size_t cols() const { return col2id.size(); }
+  bool ready() const;
   
   data::IStorage& row(size_t idx);
 
@@ -204,6 +212,37 @@ private:
 
   template<class Ty>
   data::Array<Ty>& _typed_row();
+
+  template<class Ty>
+  void _del_row();
+
+  template<class Ty>
+  void _add_row();
+
+  void _del_col(Id id);
+  
+  void _add_col(Id id);
+};
+
+
+template<class... Ty>
+struct View {
+public:
+  using val_ref_t = std::tuple<Ty&...>;
+  
+  struct Iterator {
+    
+  };
+  
+  void initialize();
+
+  val_ref_t at(size_t idx);
+  
+  Iterator begin();
+  Iterator end();
+
+private:
+  struct World* world;
 };
 
 
@@ -212,9 +251,15 @@ public:
 
   using Archetype = Table;
 
+  template<class... Ty>
+  using Map = std::unordered_map<Ty...>;
+
   Entity& entity(); 
 
   Archetype& archetype(Tag&& tag);
+
+  template<class... Ty>
+  View<Ty...> view();
 
   template<class... Tys>
   std::vector<Id> tag();
@@ -222,6 +267,9 @@ public:
   template<class Ty>
   Id get_id();
   
+  template<class... Tys>
+  void set_components(Id eid, Tys&... value);
+
   template<class... Tys>
   void add_components(Id eid, Tys&&... value);
 
@@ -252,10 +300,19 @@ private:
 
 private:
   void _move_entity(Id eid, Archetype& src_archetype, Archetype& dst_archetype);
+  
+  template<class Ty>
+  Archetype& _add_one_type(Archetype& src_archetype);
+
+  template<class Ty>
+  Archetype& _del_one_type(Archetype& src_archetype);
 
 private:
-  std::unordered_map<Id, Entity> entities_;
-  std::unordered_map<Id, Archetype> archetypes_;
+  Map<Id, Entity> entities_;
+  Map<Id, Archetype> archetypes_;
+
+  //  archetype_id, component_id, archetype_ref
+  Map<Id, Map<Id, Archetype&>> archetype_graph;
 };
 
 
@@ -267,6 +324,11 @@ template<class... Tys>
 Entity& Entity::set(Tys&&... args){
   world->add_components(eid, std::forward<Tys>(args)...);
   return *this;
+}
+
+template<class... Tys>
+Entity& Entity::add(Tys&&... args) {
+  return set(std::forward<Tys>(args)...);
 }
 
 template<class... Tys>
@@ -298,6 +360,11 @@ Id World::get_id() {
   return type_iter->second;
 }
 
+template <class... Tys> 
+inline void World::set_components(Id eid, Tys&... args) {
+  auto& archetype = entity_records.at(eid);
+  archetype.set<Tys...>(eid, std::forward<Tys>(args)...);
+}
 
 template<class... Tys>
 std::tuple<Tys&...> World::get_components(Id eid) {
@@ -308,14 +375,25 @@ std::tuple<Tys&...> World::get_components(Id eid) {
 
 template<class... Tys>
 void World::add_components(Id eid, Tys&&... args) {
-  auto& old_table = entity_records.at(eid);
-  auto& new_table = add_to_archetype<Tys...>(old_table);
+  Archetype& old_table = entity_records.at(eid);
+  Archetype& new_table = add_to_archetype<Tys...>(old_table);
 
   _move_entity(eid, old_table, new_table);
   new_table.add(eid, std::forward<Tys>(args)...);
 
   entity_records.erase(eid);
   entity_records.emplace(eid, new_table);
+}
+
+template<class... Tys>
+void World::del_components(Id eid) {
+  Archetype& src_archetype = entity_records.at(eid);
+  Archetype& dst_archetype = del_from_archetype<Tys...>(src_archetype);
+  
+  _move_entity(eid, src_archetype, dst_archetype);
+
+  entity_records.erase(eid);
+  entity_records.emplace(eid, dst_archetype);
 }
 
 
@@ -326,18 +404,47 @@ World::Archetype& World::add_to_archetype(World::Archetype& src_archetype) {
   cur_tag.insert(cur_tag.end(), 
     std::make_move_iterator(new_tag.begin()),
     std::make_move_iterator(new_tag.end()));
+
   auto& dst_archetype = archetype(std::move(cur_tag));
-  dst_archetype.mimic_rows(src_archetype); // TODO: initialize rows based on src_archetype
-  dst_archetype.initialize_new_rows<Tys...>();
+  if(!dst_archetype.ready()) {
+    dst_archetype.mimic_rows(src_archetype);
+    dst_archetype.add_rows<Tys...>();
+    assert(dst_archetype.ready());
+  }
   return dst_archetype;
 }
 
 
 template<class... Tys>
-World::Archetype& World::del_from_archetype(Archetype &src) {
-  
+World::Archetype& World::del_from_archetype(Archetype &src_archetype) {
+  auto cur_tag = src_archetype.tag();
+  (std::erase(std::remove(cur_tag.begin(), cur_tag.end(), get_id<Tys>()), cur_tag.end()), ...);
+
+  auto& dst_archetype = archetype(std::move(cur_tag));
+  if(!dst_archetype.ready()) {
+    dst_archetype.mimic_rows(src_arch etype);
+    dst_archetype.del_rows<Tys...>();
+    assert(dst_archetype.ready());
+  }
+  return dst_archetype;
 }
 
+// template <class Ty> 
+// World::Archetype& World::_add_one_type(Archetype& src_archetype) {
+//   auto cur_tag = src_archetype.tag();
+//   std::erase(std::remove(cur_tag.begin(), cur_tag.end(), get_id<Ty>()));
+  
+//   auto& dst_archetype = archetype(std::move(cur_tag));
+//   if(!dst_archetype.ready()) {
+//     dst_archetype.mimic_rows(src_archetype);
+//     dst_archetype.del_rows<Ty>();
+//     assert(dst_archetype.ready());
+//   }
+
+//   // NOTE: create connections in archetype graph.
+//   archetype_graph[src_archetype.tid][get_id<Ty>()] = dst_archetype.tid;
+//   return dst_archetype;
+// }
 
 inline World::Archetype& World::archetype(Tag&& tag) {
   std::sort(tag.begin(), tag.end());
@@ -408,6 +515,11 @@ void inline Table::move(Id id, Table& dst_table) {
 }
 
 
+inline bool Table::ready() const { 
+  return data.size() == rows(); 
+}
+
+
 inline data::IStorage& Table::row(size_t idx) {
   // TODO: insert return statement here
   return *data[idx];
@@ -417,6 +529,11 @@ inline data::IStorage& Table::row(size_t idx) {
 template<class Ty>
 data::Array<Ty>& Table::row() {
   return _typed_row<Ty>();
+}
+
+
+inline bool Table::has(Id id) {
+  return id2col.contains(id);
 }
 
 
@@ -446,11 +563,11 @@ template <class... Ty> void Table::add(Id id, Ty&&... val) {
 
 
 template <class... Ty> void Table::set(Id id, Ty&&... val) {
-  if (!id2col.contains(id)) {
-    return add(id, std::forward<Ty...>(val...));
+  auto col_iter = id2col.find(id);
+  if (col_iter == id2col.end()) {
+    return add(id, std::forward<Ty>(val)...);
   }
-  auto col = id2col.at(id);
-  ((_typed_row<Ty>().at(col) = val), ...);
+  ((_typed_row<Ty>().at(col_iter->second) = val), ...);
 }
 
 
@@ -478,12 +595,38 @@ data::Array<Ty>& Table::_typed_row() {
 }
 
 
-template <class... Ty> void Table::initialize_new_rows() {
+template <class... Ty> void Table::add_rows() {
   (data.emplace_back(new data::Array<Ty>()), ...);
-  ((id2row.emplace(world->get_id<Ty>(), rows()), row2id.emplace_back(world->get_id<Ty>())), ...);
+  ((id2row.emplace(world->get_id<Ty>(), rows()), 
+    row2id.emplace_back(world->get_id<Ty>())), ...);
 }
 
+
+template <class... Ty> inline void Table::del_rows() {
+  if constexpr (sizeof...(Ty) > 1) {
+    (del_row<Ty>(),...); 
+  } else {
+    _del_row<Ty>();
+  }
+}
+
+template <class Ty> inline void Table::_del_row() {
+  auto id = get_id<Ty>();
+  auto row = id2row.at(Id);
+  auto last_row = rows() - 1;
+  auto last_id = row2id.at(last_row);
+  
+  std::swap(data.at(row), data.at(last_row));
+  std::swap(row2id.at(row), row2id.at(last_row));
+  
+  delete data.back();
+  data.pop_back();
+  row2id.pop_back();
+}
+
+
 inline Table::Table(Id tid, World* world) : tid(tid), world(world) {}
+
 
 inline Table::~Table() {
   for(auto ptr : data) {

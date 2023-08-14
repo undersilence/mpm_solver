@@ -1,10 +1,10 @@
-#include "diy/ecs.hpp"
+#include "diy/neo_ecs.hpp"
 #include "utils/logger.hpp"
 #include "utils/timer.hpp"
 #include <iostream>
 #include <vector>
 
-#include "ext/flecs.h"
+#include "flecs.h"
 
 struct Position {
   float x, y, z;
@@ -113,7 +113,7 @@ double test_SOA() {
 
 double test_ECS() {
   FUNCTION_TIMER();
-  using namespace sim;
+  using namespace sim::neo;
   ecs::World world;
   std::vector<ecs::Entity> particles;
   double total_p{};

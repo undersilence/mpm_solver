@@ -16,3 +16,4 @@ build
 cmake-build-*
 .cache
 outputs
+external/flecs
