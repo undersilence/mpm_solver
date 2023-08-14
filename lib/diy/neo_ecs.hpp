@@ -1,7 +1,8 @@
 #pragma once
 
-#include "diy/ecs.hpp"
-#include <initializer_list>
+#include "forward.hpp"
+#include <cassert>
+#include <algorithm>
 #include <iterator>
 #include <tuple>
 #include <type_traits>
@@ -35,7 +36,7 @@ struct vec_equal_t {
 
 template<class Ty>
 constexpr static inline const char* id() {
-  return __PRETTY_FUNCTION__;
+  return FUNCTION_SIG;
 }
 
 }
@@ -50,6 +51,8 @@ public:
   virtual void shrink_one() {};
 
 public:
+  // NOTE: use mimic() to create same_type empty instance
+  virtual IStorage* create_mimic() { return nullptr; };
   virtual size_t size() const = 0;
   virtual void swap(size_t i, size_t j) = 0;
   virtual void * operator[] (size_t offset) = 0;
@@ -64,15 +67,16 @@ private:
 
 public:
 
+  IStorage* create_mimic() override {
+    return new Array<Ty>();
+  }
+
   void swap(size_t i, size_t j) override {
     std::swap(inner_array.at(i), inner_array.at(j));
   }
 
   void move(size_t src_idx, IStorage& dst_array, size_t dst_idx) override {
     auto& typed_array = static_cast<Array<Ty>&>(dst_array);
-    if(dst_idx > dst_array.size()) {
-      
-    }
     typed_array.insert(dst_idx, std::move(inner_array.at(src_idx)));
   }
 
@@ -95,9 +99,9 @@ public:
 
   void extend_one() override {
     if constexpr (std::is_default_constructible_v<Ty>) {
-      append({});
+      append(std::move(Ty()));
     } else {
-      assert(false && "value must be set properly for non_default_constructible class");
+      assert(false && "value must be set properly for non_default_constructible class"); 
     }
   }
 
@@ -150,26 +154,29 @@ private:
   std::vector<data::IStorage*> data;
 
 public:
-  Table(Id tid, World* world): tid(tid), world(world) {}
+  Table(Id tid, World* world);
+  ~Table();
   Table(Table&& table) = default;
   Table(Table const&) = delete;
   Table& operator = (Table&& table) = default;
   Table& operator = (Table const& table) = delete;
 
   template<class... Ty> 
-  void initialize_rows();
+  void initialize_new_rows();
 
-  template<class... Ty>
-  void mimic(Table& other_table);
+  // use this function to create mimic empty row instance
+  void mimic_rows(Table& other_table);
 
-  ~Table() {
-    for(auto ptr : data) {
-      delete ptr;
-    }
-  }
 
   size_t rows() const { return row2id.size(); }
   size_t cols() const { return col2id.size(); }
+  
+  data::IStorage& row(size_t idx);
+
+  // Helper: get row by type
+  template<class Ty>
+  data::Array<Ty>& row();
+
   std::vector<Id> tag() const { return row2id; };
 
   template<class... Ty>
@@ -203,9 +210,10 @@ private:
 struct World {
 public:
 
-  typedef Table Archetype;
+  using Archetype = Table;
 
   Entity& entity(); 
+
   Archetype& archetype(Tag&& tag);
 
   template<class... Tys>
@@ -305,6 +313,9 @@ void World::add_components(Id eid, Tys&&... args) {
 
   _move_entity(eid, old_table, new_table);
   new_table.add(eid, std::forward<Tys>(args)...);
+
+  entity_records.erase(eid);
+  entity_records.emplace(eid, new_table);
 }
 
 
@@ -316,14 +327,15 @@ World::Archetype& World::add_to_archetype(World::Archetype& src_archetype) {
     std::make_move_iterator(new_tag.begin()),
     std::make_move_iterator(new_tag.end()));
   auto& dst_archetype = archetype(std::move(cur_tag));
-  dst_archetype.mimic<Tys...>(src_archetype); // TODO: initialize rows based on src_archetype
+  dst_archetype.mimic_rows(src_archetype); // TODO: initialize rows based on src_archetype
+  dst_archetype.initialize_new_rows<Tys...>();
   return dst_archetype;
 }
 
 
 template<class... Tys>
 World::Archetype& World::del_from_archetype(Archetype &src) {
-
+  
 }
 
 
@@ -331,10 +343,10 @@ inline World::Archetype& World::archetype(Tag&& tag) {
   std::sort(tag.begin(), tag.end());
   auto arche_iter = tag_records.find(tag);
   if(arche_iter == tag_records.end()) {
-    Archetype new_archetype(next_id, this);
+    auto aid = next_id++;
+    Archetype new_archetype(aid, this);
     // NOTE: new_archetype initialized here
-    auto p = archetypes_.emplace(next_id, std::move(new_archetype));
-    next_id++;
+    auto p = archetypes_.emplace(aid, std::move(new_archetype));
 
     assert(p.second && "emplace new archetype failed!");
     tag_records.emplace(tag, p.first->second);
@@ -345,11 +357,13 @@ inline World::Archetype& World::archetype(Tag&& tag) {
 
 
 inline Entity& World::entity() {
-  Entity new_entity(next_id, this);
-  auto p = entities_.emplace(next_id, std::move(new_entity));
+  auto eid = next_id++;
+  Entity new_entity(eid, this);
   auto& empty_archetype = archetype({});
-  entity_records.emplace(next_id, empty_archetype);
-  next_id++;
+  empty_archetype.add(eid);
+  
+  entity_records.emplace(eid, empty_archetype);
+  auto p = entities_.emplace(eid, std::move(new_entity));
 
   return p.first->second;
 }
@@ -374,7 +388,7 @@ void inline Table::_move_elemt(
 void inline Table::move(Id id, Table& dst_table) {
   if(this == &dst_table) return;
   size_t src_col = id2col[id];
-  size_t dst_col = -1;
+  size_t dst_col = 0;
 
   if(!dst_table.id2col.contains(id)) {
     dst_col = dst_table.cols();
@@ -391,6 +405,18 @@ void inline Table::move(Id id, Table& dst_table) {
   }
   // delete moved element
   del(id);
+}
+
+
+inline data::IStorage& Table::row(size_t idx) {
+  // TODO: insert return statement here
+  return *data[idx];
+}
+
+
+template<class Ty>
+data::Array<Ty>& Table::row() {
+  return _typed_row<Ty>();
 }
 
 
@@ -444,24 +470,32 @@ void inline Table::_append_empty_if_need() {
   }
 }
 
+
 template<class Ty>
 data::Array<Ty>& Table::_typed_row() {
-  auto row = world->get_id<Ty>();
+  auto row = id2row.at(world->get_id<Ty>());
   return *utils::cast<data::Array<Ty>>(data.at(row));
 }
 
-template<class... Ty>
-void Table::initialize_rows() {
+
+template <class... Ty> void Table::initialize_new_rows() {
   (data.emplace_back(new data::Array<Ty>()), ...);
-  (row2id.emplace_back(world->get_id<Ty>()), ...);
-  for(size_t row = 0; row < row2id.size(); ++row) {
-    id2row.emplace(row2id[row], row);
+  ((id2row.emplace(world->get_id<Ty>(), rows()), row2id.emplace_back(world->get_id<Ty>())), ...);
+}
+
+inline Table::Table(Id tid, World* world) : tid(tid), world(world) {}
+
+inline Table::~Table() {
+  for(auto ptr : data) {
+    delete ptr;
   }
 }
 
-template<class... Ty>
-void Table::mimic(Table& src_table) {
-  for(size_t row = 0; row < src_table.rows(); ++row) {
+void Table::mimic_rows(Table& src_table) {
+  row2id = src_table.row2id;
+  id2row = src_table.id2row;
+  for(size_t ri = 0; ri < src_table.rows(); ++ri) {
+    data.emplace_back(src_table.row(ri).create_mimic());
   }
 }
 
