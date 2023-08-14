@@ -44,6 +44,9 @@ int main() {
     p.y += v.y;
   });
 
+  std::vector<Position> p;
+  p.push_back(x);
+
   std::for_each(std::begin(Q), std::end(Q), [](std::tuple<Position&, Velocity&> pack) {
     // auto& p = std::get<0>(pack);
     auto& [p, v] = pack;

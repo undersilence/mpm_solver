@@ -214,7 +214,7 @@ struct World {
     auto comp_sig = signature<Comp>();
     auto iter = signature_to_id.find(comp_sig);
     if (iter == signature_to_id.end()) {
-      printf("create component(%s) as id(%lu).\n", comp_sig, ecs_id_count);
+      printf("create component(%s) as id(%llu).\n", comp_sig, ecs_id_count);
       // save type traits
       component_traits.emplace(ecs_id_count, create_traits<Comp>());
       // storage the default value created by 'Component' type
