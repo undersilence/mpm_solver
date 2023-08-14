@@ -1,6 +1,7 @@
 #pragma once
 
 #include "forward.hpp"
+#include <c++/v1/__utility/integer_sequence.h>
 #include <cassert>
 #include <algorithm>
 #include <iterator>
@@ -37,6 +38,26 @@ struct vec_equal_t {
 template<class Ty>
 constexpr static inline const char* id() {
   return FUNCTION_SIG;
+}
+
+template<template<class> class TVec, class Ty>
+bool is_subset(TVec<Ty>&& S, TVec<Ty>&& I) {
+  auto p = std::begin(S);
+  auto q = std::begin(I);
+  while(p != std::end(S) && q != std::end(I)) {
+    if(*p < *q) {
+      ++p;
+    } 
+    else if(*p == *q) {
+      ++p;
+      ++q;
+    }
+    else {
+      break;
+    }
+  }
+
+  return q ==std::end(I);
 }
 
 }
@@ -122,8 +143,6 @@ using Tag = std::vector<Id>;
 
 struct Entity {
 public:
-
-
   template<typename... Tys>
   Entity& set(Tys&&... args);
 
@@ -150,6 +169,45 @@ struct Table {
 public: 
   Id tid;
   struct World* world;
+
+  template<class... Ty>
+  struct _iterator {
+    using value_type = std::tuple<Ty...>;
+    using reference_type = std::tuple<Ty&...>;
+    using difference_type = ptrdiff_t;
+    using iterator_category = std::random_access_iterator_tag;
+
+    Table* self;
+    size_t col_idx;
+    
+    _iterator() = default;
+
+    _iterator(Table* self, size_t idx){
+      set(self, idx);
+    } 
+
+    void set(Table* self, size_t idx) {
+      this->self = self;
+      this->col_idx = idx;
+
+    }   
+
+    reference_type operator *() {
+      return std::forward_as_tuple(
+        self->_typed_row<Ty>().at(col_idx)...
+      );
+    } 
+
+    _iterator& advance(ptrdiff_t t) {
+      col_idx += t;
+    }
+  };
+
+  template<class... Ty>
+  _iterator<Ty...> begin();
+
+  template<class... Ty>
+  _iterator<Ty...> end();
 
 private:
   std::vector<Id> col2id;
@@ -201,6 +259,9 @@ public:
   void del(Id id);
 
   void move(Id id, Table& dst_table);
+  
+  template<class... Ty, class TFn>
+  void for_each_col(TFn&& func);
 
 private:
 
@@ -214,6 +275,9 @@ private:
   data::Array<Ty>& _typed_row();
 
   template<class Ty>
+  data::Array<Ty>& _typed_row(size_t row);
+
+  template<class Ty>
   void _del_row();
 
   template<class Ty>
@@ -223,33 +287,56 @@ private:
   
   void _add_col(Id id);
 };
+using Archetype = Table;
 
 
 template<class... Ty>
-struct View {
+struct Query {
 public:
-  using val_ref_t = std::tuple<Ty&...>;
   
-  struct Iterator {
+  Query(struct World*);
+
+  struct iterator {
+    using _TyIt = Archetype::_iterator<Ty...>; 
+    using value_type = _TyIt::value_type;
+    using reference_type = _TyIt::reference_type;
+    using iterator_category = _TyIt::iterator_category;
+    using difference_type = _TyIt::difference_type;
     
+    Query* self;
+    _TyIt it;
+
+    iterator() = default;
+    iterator(Query* self, _TyIt it): self(self), it(it) {}
+
+    iterator& advance(difference_type step_size) {
+      // move forward
+      while(step_size + it.col_idx > it.self->cols()) {
+        
+      }
+      // move backward
+      
+    }
+
   };
   
   void initialize();
 
-  val_ref_t at(size_t idx);
+  iterator::value_type at(size_t idx);
   
-  Iterator begin();
-  Iterator end();
+  iterator begin();
+  iterator end();
+
+  template<class TFn>
+  void for_each(TFn&& func);
 
 private:
   struct World* world;
+  std::vector<Archetype*> archetypes;
 };
-
 
 struct World {
 public:
-
-  using Archetype = Table;
 
   template<class... Ty>
   using Map = std::unordered_map<Ty...>;
@@ -259,7 +346,7 @@ public:
   Archetype& archetype(Tag&& tag);
 
   template<class... Ty>
-  View<Ty...> view();
+  Query<Ty...> query();
 
   template<class... Tys>
   std::vector<Id> tag();
@@ -289,14 +376,9 @@ public:
   template<class... Tys>
   Archetype& del_from_archetype(Archetype& src);
 
-private: 
-  Id next_id {0};
-  std::unordered_map<const char*, Id> type_index;
-  std::unordered_map<Id, Archetype&> entity_records;
-  std::unordered_map<Tag, 
-    Archetype&, 
-    utils::vec_hash_t<Tag>, 
-    utils::vec_equal_t<Tag>> tag_records;
+public: 
+  Map<Id, Archetype&> entity_records;
+  Map<Tag, Archetype&, utils::vec_hash_t<Tag>, utils::vec_equal_t<Tag>> tag_records;
 
 private:
   void _move_entity(Id eid, Archetype& src_archetype, Archetype& dst_archetype);
@@ -308,8 +390,10 @@ private:
   Archetype& _del_one_type(Archetype& src_archetype);
 
 private:
+  Id next_id {0};
   Map<Id, Entity> entities_;
   Map<Id, Archetype> archetypes_;
+  Map<const char*, Id> _type_index;
 
   //  archetype_id, component_id, archetype_ref
   Map<Id, Map<Id, Archetype&>> archetype_graph;
@@ -343,18 +427,18 @@ std::tuple<Tys&...> Entity::get() {
 
 template<class... Tys>
 std::vector<Id> World::tag() {
-  Tag tag;
-  (tag.emplace_back(get_id<Tys>()), ...);
+  auto tag = Tag{get_id<Tys>()...};
   std::sort(tag.begin(), tag.end());
+  tag.erase(std::unique(tag.begin(), tag.end()), tag.end());
   return tag;
 }
 
 
 template<class Ty>
 Id World::get_id() {
-  auto type_iter = type_index.find(utils::id<Ty>());
-  if(type_iter == type_index.end()) {
-    type_index.emplace(utils::id<Ty>(), next_id);
+  auto type_iter = _type_index.find(utils::id<Ty>());
+  if(type_iter == _type_index.end()) {
+    _type_index.emplace(utils::id<Ty>(), next_id);
     return next_id++;
   }
   return type_iter->second;
@@ -398,7 +482,7 @@ void World::del_components(Id eid) {
 
 
 template<class... Tys>
-World::Archetype& World::add_to_archetype(World::Archetype& src_archetype) {
+Archetype& World::add_to_archetype(Archetype& src_archetype) {
   auto cur_tag = src_archetype.tag();
   auto&& new_tag = tag<Tys...>();
   cur_tag.insert(cur_tag.end(), 
@@ -416,37 +500,21 @@ World::Archetype& World::add_to_archetype(World::Archetype& src_archetype) {
 
 
 template<class... Tys>
-World::Archetype& World::del_from_archetype(Archetype &src_archetype) {
+Archetype& World::del_from_archetype(Archetype &src_archetype) {
   auto cur_tag = src_archetype.tag();
-  (std::erase(std::remove(cur_tag.begin(), cur_tag.end(), get_id<Tys>()), cur_tag.end()), ...);
+  (cur_tag.erase(std::remove(cur_tag.begin(), cur_tag.end(), get_id<Tys>()), cur_tag.end()), ...);
 
   auto& dst_archetype = archetype(std::move(cur_tag));
   if(!dst_archetype.ready()) {
-    dst_archetype.mimic_rows(src_arch etype);
+    dst_archetype.mimic_rows(src_archetype);
     dst_archetype.del_rows<Tys...>();
     assert(dst_archetype.ready());
   }
   return dst_archetype;
 }
 
-// template <class Ty> 
-// World::Archetype& World::_add_one_type(Archetype& src_archetype) {
-//   auto cur_tag = src_archetype.tag();
-//   std::erase(std::remove(cur_tag.begin(), cur_tag.end(), get_id<Ty>()));
-  
-//   auto& dst_archetype = archetype(std::move(cur_tag));
-//   if(!dst_archetype.ready()) {
-//     dst_archetype.mimic_rows(src_archetype);
-//     dst_archetype.del_rows<Ty>();
-//     assert(dst_archetype.ready());
-//   }
 
-//   // NOTE: create connections in archetype graph.
-//   archetype_graph[src_archetype.tid][get_id<Ty>()] = dst_archetype.tid;
-//   return dst_archetype;
-// }
-
-inline World::Archetype& World::archetype(Tag&& tag) {
+inline Archetype& World::archetype(Tag&& tag) {
   std::sort(tag.begin(), tag.end());
   auto arche_iter = tag_records.find(tag);
   if(arche_iter == tag_records.end()) {
@@ -590,7 +658,12 @@ void inline Table::_append_empty_if_need() {
 
 template<class Ty>
 data::Array<Ty>& Table::_typed_row() {
-  auto row = id2row.at(world->get_id<Ty>());
+  return _typed_row<Ty>(id2row.at(world->get_id<Ty>()));
+}
+
+
+template<class Ty>
+data::Array<Ty>& Table::_typed_row(size_t row) {
   return *utils::cast<data::Array<Ty>>(data.at(row));
 }
 
@@ -604,15 +677,16 @@ template <class... Ty> void Table::add_rows() {
 
 template <class... Ty> inline void Table::del_rows() {
   if constexpr (sizeof...(Ty) > 1) {
-    (del_row<Ty>(),...); 
+    (del_row<Ty>(), ...); 
   } else {
-    _del_row<Ty>();
+    (_del_row<Ty>(), ...);
   }
 }
 
+
 template <class Ty> inline void Table::_del_row() {
   auto id = get_id<Ty>();
-  auto row = id2row.at(Id);
+  auto row = id2row.at(id);
   auto last_row = rows() - 1;
   auto last_id = row2id.at(last_row);
   
@@ -621,6 +695,7 @@ template <class Ty> inline void Table::_del_row() {
   
   delete data.back();
   data.pop_back();
+  id2row.erase(last_id);
   row2id.pop_back();
 }
 
@@ -634,11 +709,20 @@ inline Table::~Table() {
   }
 }
 
-void Table::mimic_rows(Table& src_table) {
+
+void inline Table::mimic_rows(Table& src_table) {
   row2id = src_table.row2id;
   id2row = src_table.id2row;
   for(size_t ri = 0; ri < src_table.rows(); ++ri) {
     data.emplace_back(src_table.row(ri).create_mimic());
+  }
+}
+
+
+template<class... Ty, class TFn>
+inline void Table::for_each_col(TFn&& func) {
+  for(size_t col = 0; col < cols(); ++col) {
+    func(_typed_row<Ty>().at(col)...);
   }
 }
 
@@ -648,6 +732,43 @@ void Table::mimic_rows(Table& src_table) {
 
 
 #pragma endregion
+
+#pragma region Query_Impl
+
+template<class... Ty>
+Query<Ty...>::Query(World* world): world(world) {}
+
+template<class... Ty>
+void Query<Ty...>::initialize() {
+  auto cur_tag = world->tag<Ty...>();
+  for(auto& [tag, archetype] : world->tag_records) {
+    if(utils::is_subset(tag, cur_tag)) {
+      archetypes.emplace_back(&archetype);
+    }
+  }
 }
 
+template<class... Ty>
+template<class TFn>
+void Query<Ty...>::for_each(TFn&& func) {
+  auto cur_tag = world->tag<Ty...>();
+  for(auto& [tag, archetype] : world->tag_records) {
+    if(utils::is_subset(tag, cur_tag)) {
+      archetype.for_each_col<Ty...>(std::forward<TFn>(func));
+    }
+  }
 }
+
+template<class... Ty>
+Query<Ty...>::iterator Query<Ty...>::begin() {
+  return {this, Archetype::_iterator<Ty...>(archetypes.empty() ? nullptr : archetypes.front(), 0)}; 
+}
+
+template<class... Ty>
+Query<Ty...>::iterator Query<Ty...>::end() {
+  return {this, Archetype::_iterator<Ty...>(archetypes.empty() ? nullptr : archetypes.back(), archetypes.back()->cols())};
+}
+
+#pragma endregion
+
+}}
