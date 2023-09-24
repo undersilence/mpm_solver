@@ -227,6 +227,7 @@ template <class... Ty> struct Query {
 public:
   Query(struct World*);
 
+  // This is a stateful iterator, maybe not suitable?
   struct iterator {
     using _TyIt = Archetype::_iterator<Ty...>;
     using value_type = typename _TyIt::value_type;
@@ -634,7 +635,7 @@ template <class... Ty, class TFn> inline void Table::for_each_col(TFn&& func) {
 template <class... Ty> Query<Ty...>::Query(World* world) : world(world) {}
 
 template <class... Ty> void Query<Ty...>::initialize() {
-  const auto cur_tag = world->tag<Ty...>();
+  auto cur_tag = world->tag<Ty...>();
   for (auto& [tag, archetype] : world->tag_records) {
     if (utils::is_subset(tag, cur_tag)) {
       archetypes.emplace_back(&archetype);
