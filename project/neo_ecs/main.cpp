@@ -7,13 +7,9 @@ struct TypeSlot {
   constexpr static int value = idx;
 };
 
-int GenerateTypeID() {
-  static int value = 0;
-  return value++;
-}
-
+static int value = 0;
 template<class Ty>
-const int type_value = GenerateTypeID();
+const int type_value = value++;
 
 template<class... Ty>
 void Types2Slots() {
@@ -26,12 +22,13 @@ void test_neo_ecs() {
   sim::neo::ecs::World world;
   auto& ent = world.entity();
 
-  ent.set(A{1}, B{2});
-  auto [d, c, b, a] = ent.get<A,B,B,A>();
+  ent.set(A{1}, B{2}, std::string{"123"}, double{4.1231});
+  auto [d, c, x, y, b, a] = ent.get<A,B,std::string, double, B,A>();
 
-  std::cout << d << "," << c << "," << b << "," << a << "\n";
+  std::cout << d << "," << c << "," << b << "," << a << "," << x << "," << y << "\n";
 }
 
 int main() {
   Types2Slots<int, float, std::string, int, float>();
+  test_neo_ecs();
 }

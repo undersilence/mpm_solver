@@ -10,8 +10,9 @@
 #include <utility>
 #include <unordered_map>
 
-namespace sim::neo {
+namespace sim {
 
+namespace neo {
 namespace utils {
 
 template<class TDerived, class TBase>
@@ -296,10 +297,10 @@ public:
 
   struct iterator {
     using _TyIt = Archetype::_iterator<Ty...>; 
-    using value_type = _TyIt::value_type;
-    using reference_type = _TyIt::reference_type;
-    using iterator_category = _TyIt::iterator_category;
-    using difference_type = _TyIt::difference_type;
+    using value_type = typename _TyIt::value_type;
+    using reference_type = typename _TyIt::reference_type;
+    using iterator_category = typename _TyIt::iterator_category;
+    using difference_type = typename _TyIt::difference_type;
     
     Query* self;
     _TyIt it;
@@ -320,7 +321,7 @@ public:
   
   void initialize();
 
-  iterator::value_type at(size_t idx);
+  typename iterator::value_type at(size_t idx);
   
   iterator begin();
   iterator end();
@@ -335,10 +336,6 @@ private:
 
 struct World {
 public:
-
-  template<class Ty, Id idx>
-  class TypeSlot {};
-
   template<class... Ty>
   using Map = std::unordered_map<Ty...>;
 
@@ -391,10 +388,14 @@ private:
   Archetype& _del_one_type(Archetype& src_archetype);
 
 private:
-  Id next_id {0};
-  Map<Id, Entity> entities_;
-  Map<Id, Archetype> archetypes_;
-  Map<const char*, Id> _type_index;
+  Id _next_entity_id {0};
+  Map<Id, Entity> _entities;
+  Map<Id, Archetype> _archetypes;
+
+  inline static Id _next_type_idx = 0;
+
+  template<class Ty>
+  inline static Id _type_idx_val = _next_type_idx++;
 
   //  archetype_id, component_id, archetype_ref
   Map<Id, Map<Id, Archetype&>> archetype_graph;
@@ -437,12 +438,7 @@ std::vector<Id> World::tag() {
 
 template<class Ty>
 inline Id World::get_id() {
-  auto type_iter = _type_index.find(utils::id<Ty>());
-  if(type_iter == _type_index.end()) {
-    _type_index.emplace(utils::id<Ty>(), next_id);
-    return next_id++;
-  }
-  return type_iter->second;
+  return _type_idx_val<Ty>;
 }
 
 template <class... Tys> 
@@ -519,10 +515,10 @@ inline Archetype& World::archetype(Tag&& tag) {
   std::sort(tag.begin(), tag.end());
   auto arche_iter = tag_records.find(tag);
   if(arche_iter == tag_records.end()) {
-    auto aid = next_id++;
+    auto aid = _next_entity_id++;
     Archetype new_archetype(aid, this);
     // NOTE: new_archetype initialized here
-    auto p = archetypes_.emplace(aid, std::move(new_archetype));
+    auto p = _archetypes.emplace(aid, std::move(new_archetype));
 
     assert(p.second && "emplace new archetype failed!");
     tag_records.emplace(tag, p.first->second);
@@ -533,13 +529,13 @@ inline Archetype& World::archetype(Tag&& tag) {
 
 
 inline Entity& World::entity() {
-  auto eid = next_id++;
+  auto eid = _next_entity_id++;
   Entity new_entity(eid, this);
   auto& empty_archetype = archetype({});
   empty_archetype.add(eid);
   
   entity_records.emplace(eid, empty_archetype);
-  auto p = entities_.emplace(eid, std::move(new_entity));
+  auto p = _entities.emplace(eid, std::move(new_entity));
 
   return p.first->second;
 }
@@ -761,15 +757,15 @@ void Query<Ty...>::for_each(TFn&& func) {
 }
 
 template<class... Ty>
-Query<Ty...>::iterator Query<Ty...>::begin() {
+typename Query<Ty...>::iterator Query<Ty...>::begin() {
   return {this, Archetype::_iterator<Ty...>(archetypes.empty() ? nullptr : archetypes.front(), 0)}; 
 }
 
 template<class... Ty>
-Query<Ty...>::iterator Query<Ty...>::end() {
+typename Query<Ty...>::iterator Query<Ty...>::end() {
   return {this, Archetype::_iterator<Ty...>(archetypes.empty() ? nullptr : archetypes.back(), archetypes.back()->cols())};
 }
 
 #pragma endregion
 
-}}
+}}}
