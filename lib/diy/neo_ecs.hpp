@@ -1,7 +1,6 @@
 #pragma once
 
 #include "forward.hpp"
-#include <c++/v1/__utility/integer_sequence.h>
 #include <cassert>
 #include <algorithm>
 #include <iterator>
@@ -79,7 +78,6 @@ public:
   virtual void * operator[] (size_t offset) = 0;
   virtual void move(size_t src_idx, IStorage& dst, size_t dst_idx) = 0;
 };
-
 
 template<typename Ty>
 struct Array : IStorage {
@@ -338,6 +336,9 @@ private:
 struct World {
 public:
 
+  template<class Ty, Id idx>
+  class TypeSlot {};
+
   template<class... Ty>
   using Map = std::unordered_map<Ty...>;
 
@@ -435,7 +436,7 @@ std::vector<Id> World::tag() {
 
 
 template<class Ty>
-Id World::get_id() {
+inline Id World::get_id() {
   auto type_iter = _type_index.find(utils::id<Ty>());
   if(type_iter == _type_index.end()) {
     _type_index.emplace(utils::id<Ty>(), next_id);
