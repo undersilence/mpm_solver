@@ -34,21 +34,8 @@ template <class TVec> struct vec_equal_t {
 
 template <class Ty> constexpr static inline const char* id() { return FUNCTION_SIG; }
 
-template <template <class> class TVec, class Ty> bool is_subset(TVec<Ty>&& S, TVec<Ty>&& I) {
-  auto p = std::begin(S);
-  auto q = std::begin(I);
-  while (p != std::end(S) && q != std::end(I)) {
-    if (*p < *q) {
-      ++p;
-    } else if (*p == *q) {
-      ++p;
-      ++q;
-    } else {
-      break;
-    }
-  }
-
-  return q == std::end(I);
+template <class TVec> bool is_subset(TVec&& S, TVec&& I) {
+  return std::includes(S.begin(), S.end(), I.begin(), I.end());
 }
 
 } // namespace utils
@@ -323,7 +310,7 @@ private:
   Map<Id, Map<Id, Archetype&>> archetype_graph;
 
 public:
-  template <class... Tys> static Tag tag(Tag exist_tag);
+  template <class... Tys> static Tag tag(Tag exist_tag = {});
 
   template <class Ty> static Id get_id();
 
@@ -369,6 +356,10 @@ template <class... Tys> inline Tag World::tag(Tag exist_tag) {
 }
 
 template <class Ty> inline Id World::get_id() { return _type_idx_val<Ty>; }
+
+template <class... Tys> inline Query<Tys...> World::query() {
+  return Query<Tys...>(this);
+}
 
 template <class... Tys> void World::set_components(Id eid, Tys&&... args) {
   auto& archetype = entity_records.at(eid);
@@ -643,7 +634,7 @@ template <class... Ty, class TFn> inline void Table::for_each_col(TFn&& func) {
 template <class... Ty> Query<Ty...>::Query(World* world) : world(world) {}
 
 template <class... Ty> void Query<Ty...>::initialize() {
-  auto cur_tag = world->tag<Ty...>();
+  const auto cur_tag = world->tag<Ty...>();
   for (auto& [tag, archetype] : world->tag_records) {
     if (utils::is_subset(tag, cur_tag)) {
       archetypes.emplace_back(&archetype);
@@ -652,7 +643,7 @@ template <class... Ty> void Query<Ty...>::initialize() {
 }
 
 template <class... Ty> template <class TFn> void Query<Ty...>::for_each(TFn&& func) {
-  auto cur_tag = world->tag<Ty...>();
+  const auto cur_tag = world->tag<Ty...>();
   for (auto& [tag, archetype] : world->tag_records) {
     if (utils::is_subset(tag, cur_tag)) {
       archetype.for_each_col<Ty...>(std::forward<TFn>(func));

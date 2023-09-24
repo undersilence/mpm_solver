@@ -36,8 +36,13 @@ void test_neo_ecs() {
   ent.add<A, B>(3.1234, 332);
   auto [a0, b0, c0, d0, e0, f0] = ent.get<B, A, std::string, double, A, B>();
 
-  ent.add<A, B>(3.12345, 3332);
+  ent.set<A, B>(3.12345, 3332);
   std::cout << a0 << "," << b0 << "," << c0 << "," << d0 << "," << e0 << "," << f0 << "\n";
+
+  auto Q = world.query<A, B, A, B, double, std::string>();
+  Q.for_each([]<class... Ty>(Ty... args) {
+    ((std::cout << args << ","), ...);
+  });
 }
 
 int main() {
