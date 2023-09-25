@@ -4,8 +4,6 @@
 #include <iostream>
 #include <vector>
 
-#include "flecs.h"
-
 struct Position {
   float x, y, z;
 };
@@ -31,8 +29,8 @@ struct Particle {
   Particle(Particle&&) = default;
 };
 
-static constexpr size_t N = 1;
-static constexpr size_t STEPS = 1;
+static constexpr size_t N = 100000;
+static constexpr size_t STEPS = 10;
 
 double test_AOS() {
   FUNCTION_TIMER();
@@ -68,7 +66,11 @@ double test_AOS() {
   {
     SCOPED_TIMER("AOS::summary");
     for (size_t i = 0; i < N; ++i) {
-      total_p += particles[i].p.x + particles[i].p.y + particles[i].p.z;
+      auto& part = particles[i];
+      total_p += part.p.x + part.p.y + part.p.z + part.v.x + part.v.y + part.v.z;
+      part.v.x += part.f.x * part.m.value;
+      part.v.y += part.f.y * part.m.value;
+      part.v.z += part.f.z * part.m.value;
     }
   }
   return total_p;
@@ -105,11 +107,63 @@ double test_SOA() {
   {
     SCOPED_TIMER("SOA::summary");
     for (size_t i = 0; i < N; ++i) {
-      total_p += p[i].x + p[i].y + p[i].z;
+      total_p += p[i].x + p[i].y + p[i].z + v[i].x + v[i].y + v[i].z;
+      v[i].x += f[i].x * m[i].value;
+      v[i].y += f[i].y * m[i].value;
+      v[i].z += f[i].z * m[i].value;
     }
   }
   return total_p;
 }
+
+#ifdef TEST_NEO_ECS
+
+#include "diy/neo_ecs.hpp"
+
+double test_NEO_ECS() {
+  FUNCTION_TIMER();
+  using namespace sim::neo;
+  ecs::World world;
+  std::vector<ecs::Entity> particles;
+  double total_p{0};
+  {
+    SCOPED_TIMER("NEO_ECS::init");
+    for (size_t i = 0; i < N; ++i) {
+      world.entity<Position, Velocity, Force, Mass>({0}, {0}, {1.0f, 1.0f, 1.0f}, {1.0f});
+    }
+  }
+  auto Q = world.query<Position, Velocity, Force, Mass>();
+  {
+    SCOPED_TIMER("NEO_ECS::simulation");
+    for (size_t t = 0; t < STEPS; ++t) {
+      Q.for_each( [](auto& p, auto& v, auto& f, auto& m) {
+        // LOG_INFO("check addr of ECS components {:x}, {:x}, {:x}, {:x}", (size_t)&p, (size_t)&v, (size_t)&f, (size_t)&m);
+        f.y *= 0.95f;
+        v.x += f.x * m.value;
+        v.y += f.y * m.value;
+        v.z += f.z * m.value;
+        p.x += v.x;
+        p.y += v.y;
+        p.z += v.z;
+      });
+    }
+  }
+  {
+    SCOPED_TIMER("NEO_ECS::summary");
+    auto Q = world.query<Position, Velocity, Force, Mass>();
+    Q.for_each( [&total_p](auto& p, auto& v, auto& f, auto& m) {
+      total_p += p.x + p.y + p.z + v.x + v.y + v.z;
+      v.x += f.x * m.value;
+      v.y += f.y * m.value;
+      v.z += f.z * m.value;
+    });
+  }
+  return total_p;
+}
+
+#endif
+
+#ifdef TEST_OLD_ECS
 
 double test_ECS() {
   FUNCTION_TIMER();
@@ -155,6 +209,11 @@ double test_ECS() {
   return total_p;
 }
 
+#endif
+
+#ifdef TEST_FLECS
+#include "flecs.h"
+
 double test_FLECS() {
   FUNCTION_TIMER();
   flecs::world world;
@@ -171,7 +230,7 @@ double test_FLECS() {
     SCOPED_TIMER("FLECS::simulation");
     for (size_t t = 0; t < STEPS; ++t) {
       Q.each([](Position& p, Velocity& v, Force& f, Mass& m) {
-        LOG_INFO("check addr of FLECS components {:x}, {:x}, {:x}, {:x}", (size_t)&p, (size_t)&v, (size_t)&f, (size_t)&m);
+        // LOG_INFO("check addr of FLECS components {:x}, {:x}, {:x}, {:x}", (size_t)&p, (size_t)&v, (size_t)&f, (size_t)&m);
         f.y *= 0.95f;
         v.x += f.x * m.value;
         v.y += f.y * m.value;
@@ -184,18 +243,27 @@ double test_FLECS() {
   }
   {
     SCOPED_TIMER("FLECS::summary");
-    auto QQ = world.query<Position, Velocity>();
-    QQ.each([&](Position& p, Velocity& v) { total_p += p.x + p.y + p.z + v.x; });
+    auto QQ = world.query<Position, Velocity, Force, Mass>();
+    QQ.each([&](Position& p, Velocity& v, Force& f, Mass& m) { 
+      total_p += p.x + p.y + p.z + v.x + v.y + v.z; 
+      v.x += f.x * m.value;
+      v.y += f.y * m.value;
+      v.z += f.z * m.value;
+    });
   }
   return total_p;
 }
 
+#endif
+
+
 int main() {
   LOG_INFO("Start AOS/SOA/ECS benchmark...");
 
-  // LOG_INFO("total_p is {} from test_AOS", test_AOS());
-  // LOG_INFO("total_p is {} from test_SOA", test_SOA());
-  LOG_INFO("total_p is {} from test_ECS", test_ECS());
+  LOG_INFO("total_p is {} from test_AOS", test_AOS());
+  LOG_INFO("total_p is {} from test_SOA", test_SOA());
+  LOG_INFO("total_p is {} from test_neo_ecs", test_NEO_ECS());
+  // LOG_INFO("total_p is {} from test_ECS", test_ECS());
   LOG_INFO("total_p is {} from test_FLECS", test_FLECS());
 
   return 0;
