@@ -615,15 +615,18 @@ template <class Ty> data::Array<Ty>& Table::_typed_row(size_t row) const {
 }
 
 template <class... Ty> void Table::add_rows() {
-  (data.emplace_back(new data::Array<Ty>()), ...);
-  ((!id2row.count(World::get_id<Ty>()) &&
-    (id2row.emplace(World::get_id<Ty>(), rows()), row2id.emplace_back(world->get_id<Ty>()))),
-   ...);
-  // could assert error when when add existing row
+  ((!has<Ty>() && (_add_row<Ty>(), true)), ...);
+}
+
+template <class Ty> inline void Table::_add_row() {
+  auto id = World::get_id<Ty>();
+  data.emplace_back(new data::Array<Ty>());
+  id2row.emplace(id, rows());
+  row2id.emplace_back(id);
 }
 
 template <class... Ty> inline void Table::del_rows() {
-  ((id2row.count(World::get_id<Ty>()) && (_del_row<Ty>(), true)), ...);
+  ((has<Ty>() && (_del_row<Ty>(), true)), ...);
 }
 
 // Please make sure that 'Type' exists in table
@@ -687,7 +690,7 @@ template <class... Ty, class TFn> inline void Table::for_each_col(TFn&& func) {
   auto&& data_rows = std::forward_as_tuple(_typed_row<Ty>()...);
   for (size_t col = 0; col < cols(); ++col) {
     std::apply(
-      [&col, &func](auto&&... data_row) {
+      [col, func](auto&&... data_row) {
         func(data_row.at(col)...);
       },
       data_rows
@@ -718,7 +721,7 @@ template <class... Ty> void Query<Ty...>::initialize() {
 
 template <class... Ty> template <class TFn> void Query<Ty...>::for_each(TFn&& func) {
   for(auto& archetype: archetypes) {
-    archetype->for_each_col<Ty...>(std::forward<TFn>(func));
+    archetype->for_each_col<Ty...>(func);
   }
 }
 

@@ -1,7 +1,6 @@
 #include "diy/neo_ecs.hpp"
 #include "utils/logger.hpp"
 #include "utils/timer.hpp"
-#include <iostream>
 #include <vector>
 
 struct Position {
@@ -29,7 +28,7 @@ struct Particle {
   Particle(Particle&&) = default;
 };
 
-static constexpr size_t N = 100000;
+static constexpr size_t N = 1000000;
 static constexpr size_t STEPS = 10;
 
 double test_AOS() {
