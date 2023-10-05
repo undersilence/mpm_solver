@@ -29,7 +29,7 @@ struct Particle {
 };
 
 static constexpr size_t N = 1000000;
-static constexpr size_t STEPS = 10;
+static constexpr size_t STEPS = 100;
 
 double test_AOS() {
   FUNCTION_TIMER();

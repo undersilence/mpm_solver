@@ -2,7 +2,9 @@
 
 #include "forward.hpp"
 #include <algorithm>
+#include <c++/v1/__iterator/incrementable_traits.h>
 #include <cassert>
+#include <cstddef>
 #include <iterator>
 #include <tuple>
 #include <type_traits>
@@ -58,21 +60,19 @@ public:
 };
 
 template <typename Ty> struct Array : IStorage {
-private:
-  std::vector<Ty> inner_array;
-
 public:
+  std::vector<Ty> inner_array;
 
   Array() = default;
   Array(Array const& array) = delete;
 
   IStorage* create_mimic() override { return new Array<Ty>(); }
 
-  void swap(size_t i, size_t j) override { std::swap(inner_array.at(i), inner_array.at(j)); }
+  void swap(size_t i, size_t j) override { std::swap(inner_array[i], inner_array[j]); }
 
   void move(size_t src_idx, IStorage& dst_array, size_t dst_idx) override {
     auto& typed_array = static_cast<Array<Ty>&>(dst_array);
-    typed_array.insert(dst_idx, std::move(inner_array.at(src_idx)));
+    typed_array.insert(dst_idx, std::move(inner_array[src_idx]));
   }
 
   template <class _Ty> auto append(_Ty&& val) { return inner_array.emplace_back(val); }
@@ -81,7 +81,7 @@ public:
 
   size_t size() const override { return inner_array.size(); }
 
-  void* operator[](size_t idx) override { return &at(idx); }
+  void* operator[](size_t idx) override { return &inner_array[idx]; }
 
   void extend_one() override {
     if constexpr (std::is_default_constructible_v<Ty>) {
@@ -126,35 +126,6 @@ public:
   Id tid;
   struct World* world;
 
-  template <class... Ty> struct _iterator {
-    using value_type = std::tuple<Ty...>;
-    using reference_type = std::tuple<Ty&...>;
-    using difference_type = ptrdiff_t;
-    using iterator_category = std::random_access_iterator_tag;
-
-    Table* self;
-    size_t col_idx;
-
-    _iterator() = default;
-
-    _iterator(Table* self, size_t idx) { set(self, idx); }
-
-    void set(Table* self, size_t idx) {
-      this->self = self;
-      this->col_idx = idx;
-    }
-
-    reference_type operator*() {
-      return std::forward_as_tuple(self->_typed_row<Ty>().at(col_idx)...);
-    }
-
-    _iterator& advance(ptrdiff_t t) { col_idx += t; }
-  };
-
-  template <class... Ty> _iterator<Ty...> begin();
-
-  template <class... Ty> _iterator<Ty...> end();
-
 private:
   std::vector<Id> col2id;
   std::vector<Id> row2id;
@@ -165,7 +136,7 @@ private:
 public:
   Table(Id tid, World* world);
 
-  template<class... Ty> static Table creator(Id tid, World* world);
+  template <class... Ty> static Table creator(Id tid, World* world);
 
   // deduce from existing table... mimic their rows to avoid explicit type_traits require.
   template <bool is_add_or_del, class... Ty> static Table creator(Id tid, Table const& src_table);
@@ -212,13 +183,15 @@ public:
 
   template <class... Ty, class TFn> void for_each_col(TFn&& func);
 
+  template <class Ty> std::vector<Ty>& get_row();
+
+  template <class Ty> data::Array<Ty>& typed_row() const;
+
 private:
   void _append_empty_if_needed();
 
   static void _move_elemt(Table& src_table, size_t src_row, size_t src_col, Table& dst_table,
                           size_t dst_row, size_t dst_col);
-
-  template <class Ty> data::Array<Ty>& _typed_row() const;
 
   template <class Ty> data::Array<Ty>& _typed_row(size_t row) const;
 
@@ -234,42 +207,57 @@ using Archetype = Table;
 
 template <class... Ty> struct Query {
 public:
+  using val_t = std::tuple<Ty...>;
+  using ref_t = std::tuple<Ty&...>;
+  using cref_t = std::tuple<Ty const&...>;
+  using vec_pack_t = std::tuple<std::vector<Ty>&...>;
+  using cvec_pack_t = std::tuple<std::vector<Ty> const&...>;
+  using pack_iter_t = std::vector<vec_pack_t>::iterator;
+
   Query(struct World*);
 
   // This is a stateful iterator, maybe not suitable?
-  struct iterator {
-    using _TyIt = Archetype::_iterator<Ty...>;
-    using value_type = typename _TyIt::value_type;
-    using reference_type = typename _TyIt::reference_type;
-    using iterator_category = typename _TyIt::iterator_category;
-    using difference_type = typename _TyIt::difference_type;
+  struct inner_iterator {
+    using iterator_category = std::bidirectional_iterator_tag;
+    pack_iter_t pack_iter;
+    size_t pack_size;
+    size_t offset;
 
-    Query* self;
-    _TyIt it;
+    pack_iter_t pack_end;
+    pack_iter_t pack_begin;
 
-    iterator() = default;
-    iterator(Query* self, _TyIt it) : self(self), it(it) {}
+    ref_t operator*() {
+      return std::apply(
+          [oft = this->offset](auto&&... vec_iter) {
+            return std::forward_as_tuple(*(vec_iter + oft)...);
+          },
+          *pack_iter);
+    }
 
-    iterator& advance(difference_type step_size) {
-      // move forward
-      while (step_size + it.col_idx > it.self->cols()) {
+    void move_forward(size_t step) {
+      while (step + offset >= pack_size) {
+        step -= pack_size - offset;
+        offset = 0;
+        pack_size = std::get<0>(*(++pack_iter)).size();
       }
-      // move backward
+    }
+
+    void move_backward(size_t step) {
+      while (step > offset) {
+        step -= offset + 1;
+        pack_size = std::get<0>(*(--pack_iter)).size();
+        offset = pack_size - 1;
+      }
     }
   };
 
   void initialize();
-
-  typename iterator::value_type at(size_t idx);
-
-  iterator begin();
-  iterator end();
-
   template <class TFn> void for_each(TFn&& func);
 
 private:
   struct World* world;
   std::vector<Archetype*> archetypes;
+  std::vector<vec_pack_t> row_packs;
 };
 
 struct World {
@@ -300,8 +288,7 @@ public:
   template <bool is_add_or_del, class... Ty>
   Archetype& deduce_archetype(Archetype const& src_archetype);
 
-  template<class... Ty>
-  Archetype& deduce_archetype();
+  template <class... Ty> Archetype& deduce_archetype();
 
 public:
   Map<Id, Archetype&> entity_records;
@@ -429,7 +416,6 @@ template <class... Tys> Archetype& World::del_from_archetype(Archetype const& sr
   return deduce_archetype</* is_add_or_del = */ false, Tys...>(src_archetype);
 }
 
-
 template <bool is_add_or_del, class... Ty>
 Archetype& World::deduce_archetype(Archetype const& src_archetype) {
   auto&& new_tag = tag<Ty...>(src_archetype.unsort_tag());
@@ -449,15 +435,13 @@ Archetype& World::deduce_archetype(Archetype const& src_archetype) {
   return table_iter->second;
 }
 
-template<class... Ty>
-Archetype& World::deduce_archetype() {
+template <class... Ty> Archetype& World::deduce_archetype() {
   auto&& new_tag = tag<Ty...>();
   auto table_iter = tag_records.find(new_tag);
-  
-  if(table_iter == tag_records.end()) {
+
+  if (table_iter == tag_records.end()) {
     auto tid = _next_entity_id++;
-    auto emplace_iter =
-        _archetypes.emplace(tid, Table::creator<Ty...>(tid, this));
+    auto emplace_iter = _archetypes.emplace(tid, Table::creator<Ty...>(tid, this));
 
     assert(emplace_iter.second && "emplace new archetype failed.");
     auto& new_archetype = emplace_iter.first->second;
@@ -477,7 +461,7 @@ template <class... Ty> inline Entity& World::entity() {
 
   auto& dst_archetype = deduce_archetype<Ty...>();
   dst_archetype.add(eid);
-                                                                                                                                                                                                                                                                                                                   
+
   entity_records.emplace(eid, dst_archetype);
   auto p = _entities.emplace(eid, std::move(new_entity));
 
@@ -522,11 +506,11 @@ void inline Table::move(Id id, Table& dst_table) {
     dst_table.id2col.emplace(id, dst_table.cols());
     dst_table.col2id.emplace_back(id);
   } else {
-    dst_col = dst_table.id2col.at(id);
+    dst_col = dst_table.id2col[id];
   }
 
   for (size_t src_row = 0; src_row < rows(); ++src_row) {
-    auto id_row = row2id.at(src_row);
+    auto id_row = row2id[src_row];
     auto p = dst_table.id2row.find(id_row);
     if (p != dst_table.id2row.end()) {
       Table::_move_elemt(*this, src_row, src_col, dst_table, p->second, dst_col);
@@ -543,7 +527,7 @@ inline data::IStorage& Table::row(size_t idx) const {
   return *data[idx];
 }
 
-template <class Ty> data::Array<Ty>& Table::row() const { return _typed_row<Ty>(); }
+template <class Ty> data::Array<Ty>& Table::row() const { return typed_row<Ty>(); }
 
 inline bool Table::has(Id id) { return id2col.contains(id); }
 
@@ -551,16 +535,16 @@ template <class... Ty> bool Table::has() { return (id2row.contains(World::get_id
 
 void inline Table::del(Id id) {
   // swap_end & delete implementation
-  auto col = id2col.at(id); // throw exception if not found
+  auto col = id2col[id]; // throw exception if not found
   auto last_col = cols() - 1;
-  auto last_id = col2id.at(last_col);
+  auto last_id = col2id[last_col];
 
   for (size_t i = 0; i < rows(); ++i) {
     data[i]->swap(col, cols() - 1);
     data[i]->shrink_one();
   }
-  std::swap(id2col.at(id), id2col.at(last_id));
-  std::swap(col2id.at(col), col2id.at(last_col));
+  std::swap(id2col[id], id2col[last_id]);
+  std::swap(col2id[col], col2id[last_col]);
   id2col.erase(id);
   col2id.pop_back();
 }
@@ -569,7 +553,7 @@ template <class... Ty> void Table::add(Id id, Ty&&... val) {
   assert(!id2col.contains(id));
   id2col.emplace(id, cols());
   col2id.emplace_back(id);
-  (_typed_row<Ty>().append(val), ...);
+  (typed_row<Ty>().append(val), ...);
   _append_empty_if_needed();
 }
 
@@ -580,7 +564,7 @@ template <class... Ty> void Table::set(Id id, Ty&&... val) {
   }
   (([this, &col_iter]<class T>(T&& val) {
      auto& col = col_iter->second;
-     auto& data_row = _typed_row<Ty>();
+     auto& data_row = typed_row<Ty>();
      if (data_row.size() > col) {
        data_row.at(col) = std::forward<Ty>(val);
      } else {
@@ -595,7 +579,7 @@ template <class... Ty> void Table::set(Id id, Ty&&... val) {
 
 template <class... Ty> std::tuple<Ty&...> Table::at(Id id) {
   auto col = id2col.at(id);
-  return std::forward_as_tuple(_typed_row<Ty>().at(col)...);
+  return std::forward_as_tuple(typed_row<Ty>().at(col)...);
 }
 
 void inline Table::_append_empty_if_needed() {
@@ -606,15 +590,15 @@ void inline Table::_append_empty_if_needed() {
   }
 }
 
-template <class Ty> data::Array<Ty>& Table::_typed_row() const {
+template <class Ty> data::Array<Ty>& Table::typed_row() const {
   return _typed_row<Ty>(id2row.at(World::get_id<Ty>()));
 }
 
 template <class Ty> data::Array<Ty>& Table::_typed_row(size_t row) const {
-  return *utils::down_cast<data::Array<Ty>>(data.at(row));
+  return *utils::down_cast<data::Array<Ty>>(data[row]);
 }
 
-template <class... Ty> void Table::add_rows() {
+template <class... Ty> inline void Table::add_rows() {
   ((!has<Ty>() && (_add_row<Ty>(), true)), ...);
 }
 
@@ -632,25 +616,24 @@ template <class... Ty> inline void Table::del_rows() {
 // Please make sure that 'Type' exists in table
 template <class Ty> inline void Table::_del_row() {
   auto id = World::get_id<Ty>();
-  auto row = id2row.at(id);
+  auto row = id2row[id];
   auto last_row = rows() - 1;
-  auto last_id = row2id.at(last_row);
+  auto last_id = row2id[last_row];
 
   id2row[last_id] = row;
   id2row.erase(id);
 
-  std::swap(data.at(row), data.at(last_row));
+  std::swap(data[row], data[last_row]);
   delete data.back();
   data.pop_back();
 
-  std::swap(row2id.at(row), row2id.at(last_row));
+  std::swap(row2id[row], row2id[last_row]);
   row2id.pop_back();
 }
 
 inline Table::Table(Id tid, World* world) : tid(tid), world(world) {}
 
-template <class... Ty>
-inline Table Table::creator(Id tid, World* world) {
+template <class... Ty> inline Table Table::creator(Id tid, World* world) {
   auto new_table = Table(tid, world);
   new_table.add_rows<Ty...>();
   return new_table;
@@ -686,16 +669,27 @@ void inline Table::mimic_rows(Table const& src_table) {
   }
 }
 
+#ifndef NEO_VARIENT_TEST
+
 template <class... Ty, class TFn> inline void Table::for_each_col(TFn&& func) {
-  auto&& data_rows = std::forward_as_tuple(_typed_row<Ty>()...);
+  auto&& data_rows = std::forward_as_tuple(typed_row<Ty>()...);
   for (size_t col = 0; col < cols(); ++col) {
-    std::apply(
-      [col, func](auto&&... data_row) {
-        func(data_row.at(col)...);
-      },
-      data_rows
-    );
+    std::apply([col, func](auto&&... data_row) { func(data_row[col]...); }, data_rows);
   }
+}
+
+#else
+
+template <class... Ty, class TFn> inline void Table::for_each_col(TFn&& func) {
+  for (size_t col = 0; col < cols(); ++col) {
+    func(*static_cast<Ty*>(row(id2col[world->get_id<Ty>()])[col])...);
+  }
+}
+
+#endif
+
+template <class Ty> inline std::vector<Ty>& Table::get_row() {
+  return this->typed_row<Ty>().inner_array;
 }
 
 #pragma endregion
@@ -706,32 +700,25 @@ template <class... Ty, class TFn> inline void Table::for_each_col(TFn&& func) {
 
 #pragma region Query_Impl
 
-template <class... Ty> Query<Ty...>::Query(World* world) : world(world) {
-  initialize();
-}
+template <class... Ty> Query<Ty...>::Query(World* world) : world(world) { initialize(); }
 
 template <class... Ty> void Query<Ty...>::initialize() {
   const auto cur_tag = world->tag<Ty...>();
   for (auto& [tag, archetype] : world->tag_records) {
     if (utils::is_subset(tag, cur_tag)) {
       archetypes.emplace_back(&archetype);
+      row_packs.emplace_back(archetype.get_row<Ty>()...);
     }
   }
 }
 
 template <class... Ty> template <class TFn> void Query<Ty...>::for_each(TFn&& func) {
-  for(auto& archetype: archetypes) {
-    archetype->for_each_col<Ty...>(func);
+  for (auto& row_pack : row_packs) {
+    auto n_cols = std::get<0>(row_pack).size();
+    for (decltype(n_cols) col = 0; col < n_cols; ++col) {
+      std::apply([col, &func](auto&&... data_row) { func(data_row[col]...); }, row_pack);
+    }
   }
-}
-
-template <class... Ty> typename Query<Ty...>::iterator Query<Ty...>::begin() {
-  return {this, Archetype::_iterator<Ty...>(archetypes.empty() ? nullptr : archetypes.front(), 0)};
-}
-
-template <class... Ty> typename Query<Ty...>::iterator Query<Ty...>::end() {
-  return {this, Archetype::_iterator<Ty...>(archetypes.empty() ? nullptr : archetypes.back(),
-                                            archetypes.back()->cols())};
 }
 
 #pragma endregion
