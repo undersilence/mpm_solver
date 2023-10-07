@@ -2,7 +2,6 @@
 
 #include "forward.hpp"
 #include <algorithm>
-#include <c++/v1/__iterator/incrementable_traits.h>
 #include <cassert>
 #include <cstddef>
 #include <iterator>
@@ -205,59 +204,94 @@ private:
 };
 using Archetype = Table;
 
+template <class... Ty> struct TableView {
+  using val_t = std::tuple<Ty...>;
+  using ref_t = std::tuple<Ty&...>;
+  using cref_t = std::tuple<Ty const&...>;
+
+  struct view_iterator{
+    using value_type = val_t;
+    using reference_type = ref_t;
+    using difference_type = ptrdiff_t;
+    using vec_iters_t = std::tuple<typename std::vector<Ty>::iterator...>;
+
+    vec_iters_t vec_iters;
+    difference_type offset;
+
+    view_iterator& advance(difference_type step) {
+      offset += step;
+      std::apply([step](auto&&... vec_iter) {
+        ((vec_iter += step), ...);
+      }, vec_iters);
+    }
+    
+    reference_type operator * () {
+      return std::apply([](auto&&... vec_iter) {
+        return std::forward_as_tuple(*vec_iter...);
+      }, vec_iters);
+    }
+
+    view_iterator& operator ++() {
+      return advance(1);
+    }
+
+    bool operator < (view_iterator const& rhs) {
+      return offset < rhs.offset;
+    }
+
+    bool operator != (view_iterator const& rhs) {
+      return !(*this < rhs) && !(rhs < *this);
+    }
+  };
+
+  using vec_pack_t = std::tuple<std::vector<Ty>&...>;
+  using cvec_pack_t = std::tuple<std::vector<Ty> const&...>;
+
+  size_t vec_size;
+  vec_pack_t vec_pack;
+
+  TableView(Table& table)
+      : vec_size(table.cols()), vec_pack(table.get_row<Ty>()...) {}
+
+  template<class TFunc>
+  void for_each(TFunc&& func) {
+    for(decltype(vec_size) idx = 0; idx < vec_size; ++idx) {
+      std::apply([idx, &func](auto&&... data_row) { func(data_row[idx]...); }, vec_pack);
+    }
+  }
+
+  view_iterator begin() {
+    return iter(0);
+  }
+
+  view_iterator end() {
+    return iter(vec_size);
+  }
+
+  view_iterator iter(ptrdiff_t offset) {
+    return view_iterator{
+      .vec_iters = std::apply([offset](auto&&... vec) {
+        return std::forward_as_tuple((std::begin(vec) + offset)...); 
+      }),
+      .offset = offset
+    };
+  }
+};
+
 template <class... Ty> struct Query {
 public:
   using val_t = std::tuple<Ty...>;
   using ref_t = std::tuple<Ty&...>;
   using cref_t = std::tuple<Ty const&...>;
-  using vec_pack_t = std::tuple<std::vector<Ty>&...>;
-  using cvec_pack_t = std::tuple<std::vector<Ty> const&...>;
-  using pack_iter_t = std::vector<vec_pack_t>::iterator;
 
   Query(struct World*);
-
-  // This is a stateful iterator, maybe not suitable?
-  struct inner_iterator {
-    using iterator_category = std::bidirectional_iterator_tag;
-    pack_iter_t pack_iter;
-    size_t pack_size;
-    size_t offset;
-
-    pack_iter_t pack_end;
-    pack_iter_t pack_begin;
-
-    ref_t operator*() {
-      return std::apply(
-          [oft = this->offset](auto&&... vec_iter) {
-            return std::forward_as_tuple(*(vec_iter + oft)...);
-          },
-          *pack_iter);
-    }
-
-    void move_forward(size_t step) {
-      while (step + offset >= pack_size) {
-        step -= pack_size - offset;
-        offset = 0;
-        pack_size = std::get<0>(*(++pack_iter)).size();
-      }
-    }
-
-    void move_backward(size_t step) {
-      while (step > offset) {
-        step -= offset + 1;
-        pack_size = std::get<0>(*(--pack_iter)).size();
-        offset = pack_size - 1;
-      }
-    }
-  };
 
   void initialize();
   template <class TFn> void for_each(TFn&& func);
 
 private:
   struct World* world;
-  std::vector<Archetype*> archetypes;
-  std::vector<vec_pack_t> row_packs;
+  std::vector<TableView<Ty...>> views;
 };
 
 struct World {
@@ -706,18 +740,14 @@ template <class... Ty> void Query<Ty...>::initialize() {
   const auto cur_tag = world->tag<Ty...>();
   for (auto& [tag, archetype] : world->tag_records) {
     if (utils::is_subset(tag, cur_tag)) {
-      archetypes.emplace_back(&archetype);
-      row_packs.emplace_back(archetype.get_row<Ty>()...);
+      views.emplace_back(archetype);
     }
   }
 }
 
-template <class... Ty> template <class TFn> void Query<Ty...>::for_each(TFn&& func) {
-  for (auto& row_pack : row_packs) {
-    auto n_cols = std::get<0>(row_pack).size();
-    for (decltype(n_cols) col = 0; col < n_cols; ++col) {
-      std::apply([col, &func](auto&&... data_row) { func(data_row[col]...); }, row_pack);
-    }
+template <class... Ty> template <class TFunc> void Query<Ty...>::for_each(TFunc&& func) {
+  for (auto& view : views) {
+    view.for_each(std::forward<TFunc>(func));
   }
 }
 
