@@ -140,6 +140,7 @@ public:
   template <bool is_add_or_del, class... Ty> static Table creator(Id tid, Table const& src_table);
 
   ~Table();
+  Table() = default;
   Table(Table&& table) = default;
   Table(Table const&) = delete;
   Table& operator=(Table&& table) = default;
@@ -169,9 +170,9 @@ public:
 
   template <class... Ty> void set(Id id, Ty&&... val);
 
-  bool has(Id id);
+  bool has(Id id) const;
 
-  template <class... Ty> bool has();
+  template <class... Ty> bool has() const;
 
   template <class... Ty> void add(Id id, Ty&&... val);
 
@@ -346,8 +347,6 @@ private:
   Map<Id, Map<Id, Archetype&>> archetype_graph;
 
 public:
-  template <class... Tys> static Tag tag();
-
   template <class... Tys> static Tag tag(Tag const& exist_tag);
 
   template <class Ty> static Id get_id();
@@ -384,13 +383,6 @@ template <class... Tys> Entity& Entity::del() {
 #pragma endregion
 
 #pragma region ECS_WORLD_IMPL
-
-template <class... Tys> inline Tag World::tag() {
-  Tag&& new_tag = {get_id<Tys>()...};
-  std::sort(new_tag.begin(), new_tag.end());
-  new_tag.erase(std::unique(new_tag.begin(), new_tag.end()), new_tag.end());
-  return new_tag;
-}
 
 template <class... Tys> inline Tag World::tag(Tag const& exist_tag) {
   Tag&& new_tag = {get_id<Tys>()...};
@@ -468,31 +460,13 @@ Archetype& World::deduce_archetype(Archetype const& src_archetype) {
   return table_iter->second;
 }
 
-template <class... Ty> Archetype& World::deduce_archetype() {
-  auto&& new_tag = tag<Ty...>();
-  auto table_iter = tag_records.find(new_tag);
-
-  if (table_iter == tag_records.end()) {
-    auto tid = _next_entity_id++;
-    auto emplace_iter = _archetypes.emplace(tid, Table::creator<Ty...>(tid, this));
-
-    assert(emplace_iter.second && "emplace new archetype failed.");
-    auto& new_archetype = emplace_iter.first->second;
-    tag_records.emplace(new_tag, new_archetype);
-    return new_archetype;
-  }
-
-  return table_iter->second;
-}
-
 template <class... Ty> inline Entity& World::entity() {
-
   static_assert((... && std::is_default_constructible_v<Ty>));
 
   auto eid = _next_entity_id++;
   Entity new_entity(eid, this);
 
-  auto& dst_archetype = deduce_archetype<Ty...>();
+  auto& dst_archetype = deduce_archetype<true, Ty...>({});
   dst_archetype.add(eid);
 
   entity_records.emplace(eid, dst_archetype);
@@ -505,7 +479,7 @@ template <class... Ty> inline Entity& World::entity(Ty&&... args) {
   auto eid = _next_entity_id++;
   Entity new_entity(eid, this);
 
-  auto& dst_archetype = deduce_archetype<Ty...>();
+  auto& dst_archetype = deduce_archetype<true, Ty...>({});
   dst_archetype.add(eid, std::forward<Ty>(args)...);
 
   entity_records.emplace(eid, dst_archetype);
@@ -562,9 +536,9 @@ inline data::IStorage& Table::row(size_t idx) const {
 
 template <class Ty> data::Array<Ty>& Table::row() const { return typed_row<Ty>(); }
 
-inline bool Table::has(Id id) { return id2col.contains(id); }
+inline bool Table::has(Id id) const { return id2col.contains(id); }
 
-template <class... Ty> bool Table::has() { return (id2row.contains(World::get_id<Ty>()) && ...); }
+template <class... Ty> bool Table::has() const { return (id2row.contains(World::get_id<Ty>()) && ...); }
 
 void inline Table::del(Id id) {
   // swap_end & delete implementation
@@ -736,7 +710,7 @@ template <class Ty> inline std::vector<Ty>& Table::get_row() {
 template <class... Ty> Query<Ty...>::Query(World* world) : world(world) { initialize(); }
 
 template <class... Ty> void Query<Ty...>::initialize() {
-  const auto cur_tag = world->tag<Ty...>();
+  const auto cur_tag = world->tag<Ty...>({});
   for (auto& [tag, archetype] : world->tag_records) {
     if (utils::is_subset(tag, cur_tag)) {
       views.emplace_back(archetype);

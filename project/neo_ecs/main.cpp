@@ -1,6 +1,6 @@
 #include <iostream>
 #include <string>
-#include "diy/neo_ecs.hpp"
+#include "ecs/neo_ecs.hpp"
 #include "utils/timer.hpp"
 
 template<class Ty, int idx>
@@ -20,7 +20,7 @@ void Types2Slots() {
 void test_neo_ecs() {
   using A = float;
   using B = int;
-  sim::neo::ecs::World world;
+  sim::ecs::World world;
   auto& ent = world.entity<A, B>();
 
   ent.add(A{1.1234}, B{233}, std::string{"str"}, double{4.1231});
