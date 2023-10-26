@@ -13,7 +13,6 @@
 
 namespace sim {
 
-namespace neo {
 namespace utils {
 
 template <class TDerived, class TBase> auto down_cast(TBase* ptr) -> TDerived* {
@@ -754,5 +753,4 @@ template <class... Ty> template <class TFunc> void Query<Ty...>::for_each(TFunc&
 #pragma endregion
 
 } // namespace ecs
-} // namespace neo
 } // namespace sim

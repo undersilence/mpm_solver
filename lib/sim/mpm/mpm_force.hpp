@@ -1,7 +1,5 @@
 #pragma once
 
 namespace sim::mpm {
-  struct MPMForce {
-  
-};
-}
+struct MPMForce {};
+} // namespace sim::mpm

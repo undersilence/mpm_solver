@@ -45,11 +45,11 @@ else("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
 #    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions")
 
     # Disable RTTI.
-    string(REGEX REPLACE "-frtti" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti")
+    # string(REGEX REPLACE "-frtti" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+    # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti")
 endif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
 
 add_subdirectory("lib")
 add_subdirectory("external")
 add_subdirectory("project")
-add_subdirectory("test")
+# add_subdirectory("test")

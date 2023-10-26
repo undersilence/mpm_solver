@@ -25,4 +25,4 @@ void Timer::stop() {
   is_stopped = true;
 }
 
-} // namespace sim
+} // namespace sim::utils
