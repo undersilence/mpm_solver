@@ -1,4 +1,3 @@
-#include "diy/neo_ecs.hpp"
 #include "utils/logger.hpp"
 #include "utils/timer.hpp"
 #include <vector>
@@ -28,7 +27,7 @@ struct Particle {
   Particle(Particle&&) = default;
 };
 
-static constexpr size_t N = 1000;
+static constexpr size_t N = 10000000;
 static constexpr size_t STEPS = 100;
 
 double test_AOS() {
@@ -117,11 +116,11 @@ double test_SOA() {
 
 #ifdef TEST_NEO_ECS
 
-#include "diy/neo_ecs.hpp"
+#include "ecs/neo_ecs.hpp"
 
 double test_NEO_ECS() {
   FUNCTION_TIMER();
-  using namespace sim::neo;
+  using namespace sim;
   ecs::World world;
   std::vector<ecs::Entity> particles;
   double total_p{0};
@@ -261,9 +260,9 @@ int main() {
 
   LOG_INFO("total_p is {} from test_AOS", test_AOS());
   LOG_INFO("total_p is {} from test_SOA", test_SOA());
-  LOG_INFO("total_p is {} from test_neo_ecs", test_NEO_ECS());
+  // LOG_INFO("total_p is {} from test_neo_ecs", test_NEO_ECS());
   // LOG_INFO("total_p is {} from test_ECS", test_ECS());
-  LOG_INFO("total_p is {} from test_FLECS", test_FLECS());
+  // LOG_INFO("total_p is {} from test_FLECS", test_FLECS());
 
   return 0;
 }

@@ -14,7 +14,6 @@
 
 namespace sim {
 
-namespace neo {
 namespace utils {
 
 template <class TDerived, class TBase>
@@ -47,16 +46,15 @@ struct iterator_chain_t {
   std::vector<Ty> end_iters;
   Ty curr_iter;
 
-  template<class Ty0, class Ty1, class... Tys>
+  template <class Ty0, class Ty1, class... Tys>
   inline void reset(Ty0&& begin_iter, Ty1&& end_iter, Tys&&... args) {
     begin_iters.emplace_back(begin_iter);
     end_iters.emplace_back(end_iter);
     reset(args...);
-  } 
+  }
 
-  template<class Ty_vec, class... Tys>
-  inline void reset(Ty_vec&& vec, Tys&&... args)
-  {
+  template <class Ty_vec, class... Tys>
+  inline void reset(Ty_vec&& vec, Tys&&... args) {
     begin_iters.emplace_back(std::begin(vec));
     end_iters.emplace_back(std::end(vec));
     reset(args...);
@@ -176,6 +174,7 @@ struct Table {
   static Table creator(Id tid, Table const& src_table);
 
   ~Table();
+  Table() = default;
   Table(Table&& table) = default;
   Table(Table const&) = delete;
   Table& operator=(Table&& table) = default;
@@ -211,10 +210,10 @@ struct Table {
   template <class... Ty>
   void set(Id id, Ty&&... val);
 
-  bool has(Id id);
+  bool has(Id id) const;
 
   template <class... Ty>
-  bool has();
+  bool has() const;
 
   template <class... Ty>
   void add(Id id, Ty&&... val);
@@ -394,9 +393,6 @@ struct World {
 
  public:
   template <class... Tys>
-  static Tag tag();
-
-  template <class... Tys>
   static Tag tag(Tag const& exist_tag);
 
   template <class Ty>
@@ -439,14 +435,6 @@ Entity& Entity::del() {
 #pragma endregion
 
 #pragma region ECS_WORLD_IMPL
-
-template <class... Tys>
-inline Tag World::tag() {
-  Tag&& new_tag = {get_id<Tys>()...};
-  std::sort(new_tag.begin(), new_tag.end());
-  new_tag.erase(std::unique(new_tag.begin(), new_tag.end()), new_tag.end());
-  return new_tag;
-}
 
 template <class... Tys>
 inline Tag World::tag(Tag const& exist_tag) {
@@ -537,31 +525,13 @@ Archetype& World::deduce_archetype(Archetype const& src_archetype) {
 }
 
 template <class... Ty>
-Archetype& World::deduce_archetype() {
-  auto&& new_tag = tag<Ty...>();
-  auto table_iter = tag_records.find(new_tag);
-
-  if (table_iter == tag_records.end()) {
-    auto tid = _next_entity_id++;
-    auto emplace_iter = _archetypes.emplace(tid, Table::creator<Ty...>(tid, this));
-
-    assert(emplace_iter.second && "emplace new archetype failed.");
-    auto& new_archetype = emplace_iter.first->second;
-    tag_records.emplace(new_tag, new_archetype);
-    return new_archetype;
-  }
-
-  return table_iter->second;
-}
-
-template <class... Ty>
 inline Entity& World::entity() {
   static_assert((... && std::is_default_constructible_v<Ty>));
 
   auto eid = _next_entity_id++;
   Entity new_entity(eid, this);
 
-  auto& dst_archetype = deduce_archetype<Ty...>();
+  auto& dst_archetype = deduce_archetype<true, Ty...>({});
   dst_archetype.add(eid);
 
   entity_records.emplace(eid, dst_archetype);
@@ -575,7 +545,7 @@ inline Entity& World::entity(Ty&&... args) {
   auto eid = _next_entity_id++;
   Entity new_entity(eid, this);
 
-  auto& dst_archetype = deduce_archetype<Ty...>();
+  auto& dst_archetype = deduce_archetype<true, Ty...>({});
   dst_archetype.add(eid, std::forward<Ty>(args)...);
 
   entity_records.emplace(eid, dst_archetype);
@@ -631,10 +601,10 @@ data::Array<Ty>& Table::row() const {
   return typed_row<Ty>();
 }
 
-inline bool Table::has(Id id) { return id2col.contains(id); }
+inline bool Table::has(Id id) const { return id2col.contains(id); }
 
 template <class... Ty>
-bool Table::has() {
+bool Table::has() const {
   return (id2row.contains(World::get_id<Ty>()) && ...);
 }
 
@@ -824,7 +794,7 @@ Query<Ty...>::Query(World* world) : world(world) {
 
 template <class... Ty>
 void Query<Ty...>::initialize() {
-  const auto tag = world->tag<Ty...>();
+  const auto tag = world->tag<Ty...>({});
   for (auto& [arch_tag, archetype] : world->tag_records) {
     if (std::includes(arch_tag.begin(), arch_tag.end(), tag.begin(), tag.end())) {
       views.emplace_back(archetype);
@@ -843,5 +813,4 @@ void Query<Ty...>::for_each(TFunc&& func) {
 #pragma endregion
 
 }  // namespace ecs
-}  // namespace neo
 }  // namespace sim

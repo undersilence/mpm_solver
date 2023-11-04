@@ -1,5 +1,3 @@
 #pragma once
 
-namespace sim::mpm {
-  
-}
+namespace sim::mpm {}
