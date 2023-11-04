@@ -28,7 +28,7 @@ struct Particle {
   Particle(Particle&&) = default;
 };
 
-static constexpr size_t N = 1000000;
+static constexpr size_t N = 1000;
 static constexpr size_t STEPS = 100;
 
 double test_AOS() {
